@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inbox Pilot: your ChatGPT at the controls of your Gmail</title>
+  <meta name="description" content="Free, open-source Chrome extension: ask ChatGPT about your Gmail from the search bar. Find anything, read attachments, draft replies, tidy your inbox and fill your calendar, on your own ChatGPT plan, with no server.">
+  <meta property="og:title" content="Inbox Pilot: your ChatGPT at the controls of your Gmail">
+  <meta property="og:description" content="Ask ChatGPT about your Gmail from the search bar. Free, open source, no server.">
+  <meta property="og:image" content="https://jd2005l.github.io/InboxPilot/images/social.png">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/png" href="icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="./"><img src="icon.png" alt="">Inbox Pilot</a>
+    <nav aria-label="Site">
+      <a href="#features">Features</a>
+      <a href="#setup">Setup</a>
+      <a href="#faq">FAQ</a>
+      <a href="teams.html">For teams</a>
+      <a href="privacy.html">Privacy</a>
+      <a class="gh" href="https://github.com/JD2005L/InboxPilot"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Source</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="hero">
+      <p class="label">// Free and open source Chrome extension</p>
+      <h1>Your <span>ChatGPT</span>, at the controls of your Gmail</h1>
+      <p class="lead">Type a question into Gmail's search bar and press Enter. ChatGPT searches your mailbox, reads what it needs (attachments included), answers with links to the exact emails, drafts replies, tidies your inbox and fills your calendar when you ask. On your own ChatGPT plan, with no server in between.</p>
+      <div class="cta">
+        <a class="button primary" href="#install">Get Inbox Pilot</a>
+        <a class="button" href="https://github.com/JD2005L/InboxPilot">Read the source</a>
+      </div>
+      <p class="small-print"><span class="pill"><span class="dot" aria-hidden="true"></span>Chrome Web Store listing in review</span></p>
+      <div class="shot"><img src="images/ask.png" width="1280" height="800" alt="Gmail with the Inbox Pilot answer panel under the search bar, answering when a flight leaves, with numbered source emails (sample mailbox)"></div>
+    </div>
+
+    <section id="ask">
+      <p class="label">// What you can ask</p>
+      <h2>Plain English, straight from the search bar</h2>
+      <ul class="examples">
+        <li>When does my flight to Calgary leave, and what's the confirmation number?</li>
+        <li>How much is the plumber's invoice and when is it due?<span class="note">Reads the PDF itself.</span></li>
+        <li>Summarize this email and tell me what they need from me<span class="note">Uses the email you have open.</span></li>
+        <li>Draft a reply saying Thursday works<span class="note">Saves a draft for you to send. It cannot send.</span></li>
+        <li>Archive the promotions older than two weeks<span class="note">Shows you the list first; Undo afterwards.</span></li>
+        <li>Put my flights for the Toronto trip in my calendar<span class="note">Right time zones; you click Add on each.</span></li>
+      </ul>
+      <p style="margin-top:16px">Ordinary searches like <code>from:bob invoice</code> still search Gmail exactly as before. A small chip in the search bar shows whether Enter will search or ask, and one click flips it.</p>
+    </section>
+
+    <section id="features">
+      <p class="label">// Features</p>
+      <h2>An assistant for your inbox, not just a chat box</h2>
+      <div class="grid">
+        <div class="card"><h3>Find</h3><p>Questions become precise Gmail searches, retried and broadened until it finds the answer, with numbered links to the emails it used.</p></div>
+        <div class="card"><h3>Read</h3><p>Whole conversations and the documents attached to them, so answers come from the invoice itself, not just the email around it.</p></div>
+        <div class="card"><h3>Draft</h3><p>Replies threaded into the conversation, or new emails, saved as drafts and opened for you. There is no send button to misfire.</p></div>
+        <div class="card"><h3>Organize</h3><p>Archive, label, star, mark read, move to the inbox or Trash. You always review the exact list and confirm, and Undo puts it back.</p></div>
+        <div class="card"><h3>Calendar <span class="tag">1.1</span></h3><p>Turns bookings and appointments into events, with flights departing in one time zone and landing in another. Checks your schedule for clashes.</p></div>
+        <div class="card"><h3>Looks like Gmail</h3><p>The answer drops down under the search bar like Gmail's own suggestions, in Gmail's light or dark theme. Expand it for long conversations.</p></div>
+        <div class="card"><h3>Your ChatGPT plan</h3><p>Signs in with your ChatGPT account (Plus or higher, with Codex). No API key, no extra bill, and your plan's own models to choose from.</p></div>
+        <div class="card soon"><h3>Rules <span class="tag">coming next</span></h3><p>"Star anything I'd regret missing and ping my phone." Automations you approve once, checked as mail arrives, synced across your computers.</p></div>
+      </div>
+    </section>
+
+    <section id="screens">
+      <p class="label">// A closer look</p>
+      <h2>Answers you can check, changes you approve</h2>
+      <div class="gallery">
+        <figure><img src="images/attachments.png" width="1280" height="800" alt="Inbox Pilot reading a PDF invoice attached to an email and answering with the amount and due date" loading="lazy"><figcaption>Reads the attachment, not just the email.</figcaption></figure>
+        <figure><img src="images/organize.png" width="1280" height="800" alt="A proposed clean-up listing the conversations to archive, with checkboxes and a Confirm button" loading="lazy"><figcaption>Every change is a list you confirm, with Undo.</figcaption></figure>
+        <figure><img src="images/draft.png" width="1280" height="800" alt="A reply drafted by Inbox Pilot opened in Gmail for review" loading="lazy"><figcaption>Drafts open in Gmail for you to send.</figcaption></figure>
+        <figure><img src="images/setup.png" width="1280" height="800" alt="The Inbox Pilot settings page walking through setup with checked steps" loading="lazy"><figcaption>A setup guide that checks every step.</figcaption></figure>
+      </div>
+    </section>
+
+    <section id="open">
+      <div class="split">
+        <div>
+          <p class="label">// Open source, no server</p>
+          <h2>You don't have to take our word for it</h2>
+          <p>An extension that reads your email should be one you can inspect. Inbox Pilot is open source under the GPL, and it has no backend at all: your browser talks to Google and to your ChatGPT account directly.</p>
+          <p><a href="https://github.com/JD2005L/InboxPilot">Read the code on GitHub</a> · <a href="privacy.html">Privacy policy</a></p>
+        </div>
+        <ul class="ticks">
+          <li>No Inbox Pilot server, no analytics, nothing sent to the developer</li>
+          <li>Gmail access through a Google app <strong>you</strong> create and own</li>
+          <li>Requests to ChatGPT sent with storage off</li>
+          <li>Email text treated as data: instructions inside an email are never followed</li>
+          <li>No way to send email or delete anything permanently</li>
+          <li>Conversations live only in the Gmail tab you asked in</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="setup">
+      <p class="label">// Setup</p>
+      <h2>About ten minutes, once</h2>
+      <p>The settings page walks you through every step with direct links, and checks each one for you.</p>
+      <ol class="steps">
+        <li><strong>Connect ChatGPT.</strong> Click Connect ChatGPT, enter the short code on OpenAI's page, and approve Codex (the part of ChatGPT the extension signs in through).</li>
+        <li><strong>Create your own Google app.</strong> Free, no credit card: a Google Cloud project, the Gmail API, yourself as a test user, and a sign-in client whose ID you paste back. Nobody else's app ever touches your mail.</li>
+        <li><strong>Connect Gmail.</strong> Pick your account, continue past "Google hasn't verified this app" (it is your own app), and tick the Gmail boxes.</li>
+        <li><strong>Ask.</strong> Type a question into Gmail's search bar and press Enter.</li>
+      </ol>
+      <p style="margin-top:14px">Would rather skip the Google Cloud part? <a href="#waitlist">One-click setup is planned.</a> Rolling it out to a team? <a href="teams.html">We can set it up for you.</a></p>
+    </section>
+
+    <section id="install">
+      <div class="band">
+        <p class="label">// Install</p>
+        <h2>Get Inbox Pilot</h2>
+        <p>The Chrome Web Store listing is in review. Until it is live, install it from source: download the code, run <code>npm ci</code> and <code>npm run build</code>, then load the <code>dist</code> folder in <code>chrome://extensions</code> with Developer mode on.</p>
+        <div class="cta">
+          <a class="button primary" href="https://github.com/JD2005L/InboxPilot#install">Install from source</a>
+          <a class="button" href="https://github.com/JD2005L/InboxPilot/releases">Releases</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="faq">
+      <p class="label">// FAQ</p>
+      <h2>Questions</h2>
+      <details class="faq"><summary>Is it really free?</summary><div><p>Yes, every feature, with no account with us. It runs on the ChatGPT plan you already pay for. If it saves you time, you can <a href="#sponsor">support the project</a>.</p></div></details>
+      <details class="faq"><summary>Which ChatGPT plans work?</summary><div><p>Plans that include Codex: Plus, Pro, Business, Edu and Enterprise. Usage counts toward your plan's Codex limits; when you reach one, Inbox Pilot tells you when it resets.</p></div></details>
+      <details class="faq"><summary>How is this different from Gmail's "Ask Gmail"?</summary><div><p>Ask Gmail is Google's own paid Gemini feature. Inbox Pilot uses your ChatGPT account and models, reads attachments, drafts replies, organizes mail with your confirmation, and adds events to your calendar.</p></div></details>
+      <details class="faq"><summary>Why do I have to create a Google app?</summary><div><p>So that nobody else, including us, ever has access to your mail. Google requires apps that read Gmail to be your own or to pass a paid security review; your own app keeps it free and private. The setup guide takes about ten minutes.</p></div></details>
+      <details class="faq"><summary>Can it send email or delete things?</summary><div><p>No. It saves drafts for you to send, and anything it moves to Trash stays recoverable for 30 days. Every change to your mailbox waits for your confirmation and can be undone.</p></div></details>
+      <details class="faq"><summary>Something isn't working</summary><div><p>The settings page shows what is connected and the exact fix for each error Google or OpenAI can show. Still stuck? <a href="https://github.com/JD2005L/InboxPilot/issues">Open an issue</a> or <a href="mailto:James@Levac.net?subject=Inbox%20Pilot%20support">email James@Levac.net</a> with your Chrome version and what the settings page says.</p></div></details>
+    </section>
+
+    <section id="sponsor">
+      <div class="split">
+        <div class="band">
+          <p class="label">// Support the project</p>
+          <h2>Free, with no catch</h2>
+          <p>Inbox Pilot has no paid tier and holds nothing back. If it saves you time, sponsoring keeps it maintained as Gmail and ChatGPT change.</p>
+          <div class="cta"><a class="button primary" href="https://github.com/sponsors/JD2005L">Sponsor on GitHub</a><a class="button" href="https://github.com/JD2005L/InboxPilot">Star the repo</a></div>
+        </div>
+        <div class="band" id="waitlist">
+          <p class="label">// Planned</p>
+          <h2>One-click setup</h2>
+          <p>A verified Google app you connect in one click, for people who would rather not create their own. Optional and paid, to cover Google's yearly security assessment; doing it yourself stays free forever.</p>
+          <div class="cta"><a class="button" href="mailto:James@Levac.net?subject=Inbox%20Pilot%20one-click%20setup%20waitlist&amp;body=Please%20let%20me%20know%20when%20one-click%20setup%20is%20available.">Join the waitlist</a></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>More from James Levac: <a href="https://jd2005l.github.io/GithubActionsMonitor/">GitHub Actions Monitor</a> · <a href="https://jd2005l.github.io/GitHubRepoNavigator/">GitHub Repo Navigator</a></p>
+    <p>Inbox Pilot by <a href="https://levac.net/">James Levac</a> · <a href="https://github.com/JD2005L/InboxPilot">Source (GPL-3.0)</a> · <a href="privacy.html">Privacy</a> · <a href="teams.html">For teams</a></p>
+    <p>Not affiliated with or endorsed by Google or OpenAI. Gmail is a trademark of Google LLC; ChatGPT is a trademark of OpenAI.</p>
+  </footer>
+</body>
+</html>

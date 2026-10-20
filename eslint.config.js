@@ -9,7 +9,7 @@ const unsafeHtml = [
 ];
 
 export default tseslint.config(
-  // force-motion.js is a verbatim copy of the Project Workbench standard drop-in; it is not edited here.
+  // force-motion.js is a shared drop-in kept verbatim; it is not linted or edited here.
   { ignores: ['store/**', 'dist/**', 'dist-store/**', 'release/**', 'node_modules/**', 'coverage/**', 'src/options/force-motion.js'] },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,

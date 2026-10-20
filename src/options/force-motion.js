@@ -1,4 +1,4 @@
-/* pw-force-motion — Project Workbench standard (canonical copy: ProjectWorkbench/standards/force-motion/).
+/* force-motion: a shared drop-in that keeps animations on regardless of reduced-motion settings (kept verbatim).
    Loaded as an external file because Manifest V3 extension pages forbid inline scripts. */
 (function () {
   "use strict";

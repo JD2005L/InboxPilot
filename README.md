@@ -1,150 +1,196 @@
-# Inbox Pilot
+<p align="center"><img src="site/icon.png" width="72" height="72" alt=""></p>
 
-A Chrome (Manifest V3) extension that puts **ChatGPT at the controls of your Gmail**. Type a question into Gmail's
-search bar and press Enter: ChatGPT searches your mailbox, reads what it needs (attachments included), answers with
-numbered links to the exact emails, drafts replies, organizes mail, and adds events to Google Calendar when you ask. It runs on **your own ChatGPT
-plan** (no API key) and reads Gmail through a **Google app you own** (no server; nobody else gets access). It is not
-Gmail's built-in "Ask Gmail".
+<h1 align="center">Inbox Pilot</h1>
 
-Product page, support and privacy policy: <https://levac.net/inbox-pilot/>.
+<p align="center"><strong>Your ChatGPT, at the controls of your Gmail.</strong><br>
+Ask questions from Gmail's search bar. ChatGPT finds the emails, reads the attachments, answers with links to its
+sources, drafts replies, tidies your inbox and fills your calendar. On your own ChatGPT plan, with no server.</p>
 
-## What it changes in Gmail
+<p align="center">
+<a href="https://jd2005l.github.io/InboxPilot/">Website</a> ·
+<a href="#install">Install</a> ·
+<a href="PRIVACY.md">Privacy</a> ·
+<a href="https://github.com/sponsors/JD2005L">Sponsor</a>
+</p>
 
-| Where | What |
-|---|---|
-| **The search bar** | Same bar, same suggestions, chips and search options. Placeholder reads "Search mail or ask ChatGPT". **Enter decides**: Gmail queries (`from:bob invoice`) search as always; questions and sentences go to ChatGPT. A chip at the right end shows **Search ↵** or **Ask ChatGPT ↵**; click it to flip. **Shift+Enter** always asks. |
-| **Under the search bar** | The answer panel drops down like Gmail's own suggestion list, in Gmail's light or dark theme: a one-line trail of what it did, the answer with numbered citations, the cited emails as rows, proposals to confirm, and a follow-up box. Expand for long conversations; **Esc** closes. |
+![Gmail with the Inbox Pilot answer panel under the search bar, answering when a flight leaves, with numbered source emails (sample mailbox)](site/images/ask.png)
 
-If Gmail's layout changes so the search bar cannot be found, a floating **Ask your inbox** button appears instead.
+## What you can ask
 
-## What it can do
+- *When does my flight to Calgary leave, and what's the confirmation number?*
+- *How much is the plumber's invoice and when is it due?* (reads the PDF itself)
+- *Summarize this email and tell me what they need from me* (uses the email you have open)
+- *Draft a reply saying Thursday works* (saves a draft; Inbox Pilot cannot send)
+- *Archive the promotions older than two weeks* (shows you the list first, with Undo)
+- *Put my flights for the Toronto trip in my calendar* (right time zones; you click Add)
+- *Whenever the school emails, send a summary to my phone* (creates a rule you confirm)
+
+Ordinary searches like `from:bob invoice` still search Gmail exactly as before. A chip at the end of the search bar
+shows whether **Enter** will search or ask ChatGPT; click it to flip, or press **Shift+Enter** to always ask.
+
+## Features
 
 | | |
 |---|---|
-| **Find** | Questions become Gmail searches, retried and broadened until something answers them. |
-| **Read** | Whole threads, and attachments: PDF (pdf.js, in an offscreen document), Word, Excel, PowerPoint, text, CSV, HTML. |
-| **This email** | With an email open, "summarize this" or "what do they want?" uses it (a chip above the question box shows it; × to ignore). |
-| **Show** | "Pull it up" opens the email in Gmail; "show me everything from…" runs the search in Gmail's list. |
-| **Draft** | Replies threaded into the conversation (In-Reply-To/References, Re: subject, right recipient) or new emails, saved as drafts and opened. **No send capability exists.** |
-| **Organize** | Archive, mark read/unread, star/unstar, add/remove label (created if missing), move to inbox, Trash (30-day recoverable). Always a **proposal**: the panel lists the conversations (untick any), Confirm applies, **Undo** reverses. Unsubscribe lists each sender's own unsubscribe link instead. |
-| **Rules** (optional) | Automation the user approves once: *"star and notify me about anything I'd regret missing"*, *"label bills"*, *"archive promotions older than two weeks every day"*, *"send school emails to my phone"*. Each rule is a Gmail filter, an optional yes/no question ChatGPT answers per email, and fixed actions (label, archive, star, mark read or important, Trash, desktop notification, webhook to ntfy, Home Assistant, n8n, Discord or Slack). New mail comes from Gmail's history feed, so nothing is missed while Chrome is closed (up to about a week). Daily limits, a dry run on recent mail, an activity log with Undo. Rules can be created, changed, paused and deleted from settings **or by asking in chat**, always confirmed on a card. |
-| **Calendar** (optional) | "Put my flights in my calendar": events from bookings and appointments, with local times and time zones as the email states them (a flight departs in one zone and lands in another), the details for the day, and a link back to the email. Each is a **proposal** card: **Add to calendar**, then **Undo** if needed. "Am I free Thursday afternoon?" reads the primary calendar. Nobody is invited; existing events are never changed. |
+| **Find** | Questions become precise Gmail searches, retried and broadened until something answers them, with numbered links to the emails used. |
+| **Read** | Whole conversations and their attachments: PDF, Word, Excel, PowerPoint, text, CSV and HTML. "This email" means the one you have open. |
+| **Show** | "Pull it up" opens the email in Gmail; "show me everything from…" runs the search in Gmail's own list. |
+| **Draft** | Replies threaded into the right conversation, or new emails, saved as drafts and opened for you to review and send. |
+| **Organize** | Archive, mark read or unread, star, label, move to the inbox or Trash. Always a list you review and confirm, with Undo. Unsubscribe shows each sender's own unsubscribe link. |
+| **Calendar** (optional) | Events from bookings and appointments, with times as the email states them (a flight departs in one time zone and lands in another), the details you need on the day, and a link back to the email. You click **Add** on each. Also answers "am I free Thursday afternoon?". |
+| **Rules** (optional) | Automations you approve once: a Gmail filter, an optional yes/no question ChatGPT answers per email, and fixed actions (label, archive, star, mark read or important, Trash, a desktop notification, or a webhook to ntfy, Home Assistant, n8n, Discord or Slack). New mail is handled as it arrives, and mail that came in while Chrome was closed is caught up later. Daily limits, a dry run on recent mail, and an activity log with Undo. Create, change, pause or delete rules in settings or by asking in chat. |
+| **Looks like Gmail** | The answer drops down under the search bar like Gmail's own suggestions, in Gmail's light or dark theme. Expand it for long conversations; **Esc** closes it. |
 
-Organizing is fenced in the background: a Confirm can only touch conversations that proposal showed (`ProposalBook`),
-each proposal applies once, and every target is looked up first so the model cannot invent one. Calendar events get
-the same fence (`EventBook`): Add creates exactly the event the card showed, once. Email content is
-treated as untrusted data in the prompt and is never rendered as HTML (lint forbids `innerHTML`).
+It is not Gmail's built-in "Ask Gmail" (Google's paid Gemini feature): Inbox Pilot uses your ChatGPT account and models.
+
+## Install
+
+**Chrome Web Store:** the listing is in review. Until it is live, install from source.
+
+**From source:** you need Chrome 140 or later, Node.js 22.12 or later, and npm.
+
+```bash
+git clone https://github.com/JD2005L/InboxPilot.git
+cd InboxPilot
+npm ci
+npm run build          # writes the extension to dist/
+```
+
+Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and choose the `dist` folder. The
+settings page opens and starts the guided setup.
+
+## Setup (about ten minutes, once)
+
+You need a ChatGPT plan that includes Codex (Plus, Pro, Business, Edu or Enterprise) and a Gmail account. The
+settings page walks through every click with direct links, checks each step, and shows the exact fix for every error
+Google or OpenAI can show.
+
+1. **Connect ChatGPT.** Click *Connect ChatGPT*, enter the short code on OpenAI's page, and approve *Codex*. If OpenAI
+   says device code sign-in is off: ChatGPT, Settings, Security, *Enable device code sign-in for Codex*.
+2. **Create your own Google app** (free, no credit card): a Google Cloud project with the Gmail API, the Google Auth
+   Platform set up as *External* with yourself as a **test user**, and an OAuth client of type **Web application**
+   with the redirect URI the settings page shows. Paste its Client ID into the settings page. Your own app means
+   nobody else, including the author, ever has access to your mail.
+3. **Connect Gmail.** Pick the account, click *Continue* on "Google hasn't verified this app" (it is your own app),
+   and tick both Gmail boxes (the second allows drafts and organizing; leave it unticked for answers only).
+4. **Ask.** Type a question into Gmail's search bar and press Enter.
+5. **Calendar (optional).** Enable the Google Calendar API in the same project, then click *Connect Calendar* under
+   Connections.
+
+## Privacy and safety
+
+- **No server.** The extension talks only to Google (your Gmail and Calendar) and OpenAI (your ChatGPT account).
+  No analytics, and nothing is sent to the author.
+- **Your Google app, your tokens.** Sign-in tokens stay in this browser's extension storage, out of reach of web
+  pages and of the script that runs inside Gmail.
+- **You approve every change.** Organizing and calendar events are proposals you confirm, each with Undo. There is
+  no way to send email or delete anything permanently; Trash keeps mail for 30 days.
+- **Email is data, not instructions.** ChatGPT is told never to follow instructions written inside an email, and a
+  confirmed change can only touch exactly what its card showed. Email content is never rendered as HTML.
+- **Rules can't be hijacked.** ChatGPT only answers a rule's yes/no question; the actions, labels and webhook
+  destinations are fixed by you, and a rule proposed in chat can only send to destinations you added yourself.
+- **Conversations are not kept.** They live in the Gmail tab you asked in and disappear when it closes.
+
+The full policy is in [PRIVACY.md](PRIVACY.md) (also published at
+<https://jd2005l.github.io/InboxPilot/privacy.html>).
+
+> **Note:** ChatGPT-plan access for third-party apps uses OpenAI's Codex sign-in, the same device-code flow as the
+> open-source [Codex CLI](https://github.com/openai/codex). It works today, but OpenAI could change or restrict it.
 
 ## How it works
 
 ```
-Gmail tab (content script: search-bar chip + answer panel, shadow DOM)
+Gmail tab (content script: search-bar chip + answer panel, in a closed shadow root)
    │  long-lived port (ask, stop, apply, undo)
    ▼
 Service worker
-   ├─ ChatGPT: device-pairing sign-in → chatgpt.com/backend-api/codex/responses (streamed, store: false)
-   │     tools: search_emails, read_thread, read_attachment, open_email, show_in_gmail, create_draft, propose_actions,
-   │            check_calendar and propose_event (only while Calendar is connected)
-   ├─ Gmail API with a token from the user's own Google OAuth client (gmail.readonly, plus gmail.modify if granted)
-   ├─ Calendar API, same token, when the user connected Calendar (calendar.events; CORS, so no host permission)
-   └─ Offscreen document (only while reading a PDF): pdf.js text extraction
+   ├─ ChatGPT: device-code sign-in → chatgpt.com/backend-api/codex/responses (streamed, store: false)
+   │     tools: search_emails, read_thread, read_attachment, open_email, show_in_gmail, create_draft,
+   │            propose_actions, and check_calendar / propose_event while Calendar is connected
+   ├─ Gmail API, with a token from the user's own Google OAuth client (gmail.readonly, plus gmail.modify if granted)
+   ├─ Calendar API, same token, if connected (calendar.events)
+   └─ Offscreen document, only while reading a PDF: pdf.js text extraction
 ```
 
-- **ChatGPT sign-in** is the device-code flow the Codex CLI uses (`codex login --device-auth`), with request shapes
-  from [openai/codex](https://github.com/openai/codex). The model list comes from the plan's catalog.
-- **Gmail access** uses `chrome.identity.launchWebAuthFlow` with the user's own OAuth client (type *Web
-  application*, redirect URI `https://<extension-id>.chromiumapp.org/`). Interactive sign-in asks for read and modify;
-  the user can untick modify and keep answers only. Silent hourly renewal asks for exactly what was granted.
-- Tokens live in `chrome.storage.local`/`session` locked to trusted contexts, so the Gmail content script never sees them.
-
-> **Caveat:** ChatGPT-plan access for third-party apps uses OpenAI's Codex sign-in, built for OpenAI's own Codex
-> clients. It works the way the open-source Codex CLI does, but OpenAI could change or restrict it. The ChatGPT side is
-> isolated in `src/background/chatgpt/`.
-
-## Install
-
-**Chrome Web Store:** coming soon.
-
-**From source (unpacked):** Chrome 140+, Node.js 22.12+, npm.
-
-```bash
-npm ci
-npm run build          # writes the unpacked extension to dist/
-```
-
-1. `chrome://extensions`, turn on **Developer mode**, **Load unpacked**, choose `dist/`.
-2. The settings page opens and starts the guided setup.
-
-The unpacked build's extension ID is pinned by `config/extension-public-key.txt`: **`lkkohbhfochcaebnjenjjofieghkkkil`**.
-That matters because the Google redirect URI contains it. A store install gets its own ID; the settings page always
-shows the right redirect URI.
-
-For a personal build, put your Google client ID in `config/extension.config.json` (git-ignored; see the `.example`)
-or `GMC_GOOGLE_CLIENT_ID`, and setup skips the paste step. Store builds always leave it out.
-
-## Setup (about ten minutes, once)
-
-The **Setup** tab walks through every click, checks each step against real state, and shows the exact fix for every
-error Google or OpenAI can show:
-
-1. **Connect ChatGPT.** Click *Connect ChatGPT*, enter the code on OpenAI's page, approve *Codex*. If device code
-   sign-in is off: ChatGPT → Settings → Security → *Enable device code sign-in for Codex*.
-2. **Create your Google app** (free, no card): project → Gmail API → Google Auth Platform *Get started* (External) →
-   add your Gmail address as a **test user** (the app stays in Testing; *Publish app* would need a public site and
-   privacy policy) → OAuth client of type **Web application** with the redirect URI shown → paste the Client ID.
-3. **Connect Gmail.** Pick the account, *Continue* on "Google hasn't verified this app" (it is your own app), tick
-   both Gmail boxes (the second enables drafts and organizing).
-4. **Ask.** Type a question in Gmail's search bar and press Enter.
-5. **Calendar (optional).** Enable the Google Calendar API in the same project, then *Connect Calendar* under
-   Connections and tick the calendar box. The settings page checks the API is on.
+- **ChatGPT sign-in** is the Codex CLI's device-code flow (`codex login --device-auth`); the model list comes from
+  the plan's own catalog.
+- **Google sign-in** uses `chrome.identity.launchWebAuthFlow` with the user's OAuth client and renews silently every
+  hour with exactly the scopes that were granted.
+- **Changes are fenced in the background.** A Confirm can only touch the conversations its proposal showed
+  (`ProposalBook`), and Add creates exactly the event its card showed (`EventBook`), each once. Every target is
+  looked up first, so the model cannot invent one.
 
 ### Rules across several computers
 
-With sync on (Rules tab, *Turn on sync*: enable the Drive API, tick one more box), rules, webhook destinations and
-the activity log live in the Google Drive **app-data folder** of the user's own Google app: hidden, private to that
-OAuth client, no access to their files. Every browser connected to it writes its own heartbeat file every minute.
+With sync on (Rules tab, *Turn on sync*), rules, webhook destinations and the activity log live in the Google Drive
+**app-data folder** of your own Google app: hidden, private to that app, with no access to your files. Every browser
+writes its own heartbeat file each minute.
 
-- **Who runs the rules:** of the browsers heard from in the last 3 minutes, the one that came online first. The
-  others stand by. Times are Drive's server timestamps, so the computers' clocks never need to agree.
-- **First in, last out:** a browser that missed its heartbeats (closed, asleep, offline) recreates its file when it
-  returns, so it rejoins at the back and never takes over from the browser that kept going.
+- **Who runs the rules:** of the browsers heard from in the last 3 minutes, the one that came online first; the others
+  stand by. Drive's server timestamps are used, so the computers' clocks never need to agree.
+- **First in, last out:** a browser that missed its heartbeats (closed, asleep, offline) rejoins at the back, so it
+  never takes over from the one that kept going.
 - **Handover:** the leader saves its position in Gmail's history feed, its queue and daily counts in a shared state
   file, so the next leader continues exactly where it stopped.
-- **No locks needed:** every file has a single writer (the user for rules, the leader for state, each browser for its
-  heartbeat and its log), which matters because Drive has no compare-and-swap.
+- **No locks needed:** every file has a single writer, which matters because Drive has no compare-and-swap.
 
-ChatGPT usage limits pause only rules that ask ChatGPT, until the limit resets (from the error's `resets_at`);
-filter-only rules keep running, and new mail stays queued (up to 8 days) so nothing is skipped.
+If the ChatGPT plan's usage limit is reached, only rules that ask ChatGPT pause, until the limit resets; filter-only
+rules keep running, and new mail stays queued for up to 8 days so nothing is skipped.
 
 ## Development
 
 ```bash
 npm run check          # typecheck, lint, unit tests, build
 npm run test:watch
-npm run package        # store build + release/chrome-web-store-<version>/ (zip, SUBMIT.html/.md, icon, tiles, screenshots)
+npm run package        # store build and release/chrome-web-store-<version>/ (zip, listing text, images)
 ```
 
-`npm run package` takes the five store screenshots with the real built extension on a mock Gmail of made-up emails
+`npm run package` takes the store screenshots with the real built extension on a mock Gmail of made-up emails
 (`store/mock-gmail.html`), with ChatGPT and the Gmail API replaced by scripted scenes (`store/stub.js`). It needs
 Playwright's Chromium (`npx playwright install chromium`).
 
+For your own build, you can put your Google client ID in `config/extension.config.json` (git-ignored; see the
+`.example` file) or the `GMC_GOOGLE_CLIENT_ID` environment variable, and setup skips the paste step. Store builds
+never include one. The unpacked build's extension ID is pinned by `config/extension-public-key.txt`
+(`lkkohbhfochcaebnjenjjofieghkkkil`), so the Google redirect URI stays the same across rebuilds.
+
 | Path | Role |
 |---|---|
-| `src/background/chatgpt/` | Device pairing, token refresh (single-flight; refresh tokens rotate), Responses API streaming client |
-| `src/background/gmail/` | Google sign-in, Gmail API, message/MIME parsing, attachment text (ZIP reader for Office files), draft MIME builder |
-| `src/background/calendar/` | Calendar API client, event validation (wall-clock times in IANA zones), the event proposal fence |
-| `src/background/chat/` | System prompt, tool definitions, the tool loop, organize/undo and the proposal fence |
-| `src/offscreen/` | pdf.js PDF text extraction, loaded only on demand |
+| `src/background/chatgpt/` | Device-code sign-in, token refresh (single-flight; refresh tokens rotate), streaming Responses client |
+| `src/background/gmail/` | Google sign-in, Gmail API, message and MIME parsing, attachment text, draft builder |
+| `src/background/calendar/` | Calendar API client, event validation (wall-clock times in IANA zones), the event fence |
+| `src/background/chat/` | System prompt, tool definitions, the tool loop, organize and undo, the proposal fence |
+| `src/offscreen/` | pdf.js text extraction, loaded only on demand |
 | `src/content/` | Search-bar integration (Enter routing, chip), the answer panel, theme detection |
 | `src/options/` | Settings page and setup guide |
-| `src/shared/` | Messages, types, the `h()` DOM builder, the safe Markdown renderer |
-| `scripts/` | Build, icon renderer, store packaging (listing fields, screenshots, tiles) |
+| `src/shared/` | Messages, types, the DOM builder, the safe Markdown renderer |
+| `scripts/` | Build, icon renderer, store packaging |
+| `site/` | The project website (GitHub Pages) |
 
 `CODEX_CLIENT_VERSION` in `scripts/build.mjs` is the Codex release the model catalog is requested for; bump it when
 OpenAI ships models that need a newer client.
 
-## Privacy
+## Contributing and support
 
-See [PRIVACY.md](PRIVACY.md) (published at <https://levac.net/inbox-pilot/privacy.html>). Short version: no Inbox
-Pilot server; mail goes from Google to your ChatGPT account only for the answer you asked for; changes to your mailbox
-wait for your confirmation; conversations live only in the Gmail tab.
+Bug reports, ideas and pull requests are welcome in [issues](https://github.com/JD2005L/InboxPilot/issues). Please
+run `npm run check` before sending a change. For a setup problem, include your Chrome version and what the settings
+page shows.
+
+Inbox Pilot is free with nothing held back. If it saves you time, you can
+[sponsor its upkeep](https://github.com/sponsors/JD2005L). Teams on Google Workspace can have it
+[set up for them](https://jd2005l.github.io/InboxPilot/teams.html).
+
+More by the author: [GitHub Actions Monitor](https://jd2005l.github.io/GithubActionsMonitor/) and
+[GitHub Repo Navigator](https://jd2005l.github.io/GitHubRepoNavigator/).
+
+## License and name
+
+The code is licensed under the [GNU General Public License v3.0](LICENSE): you may use, study, change and share it,
+and anything you distribute that is based on it must be released under the same license, with its source.
+
+The license covers the code, not the name. "Inbox Pilot" and its paper-plane icon identify the official release by
+James Levac; if you publish a fork (for example on the Chrome Web Store), give it a different name and icon so people
+can tell them apart.
+
+Not affiliated with or endorsed by Google or OpenAI. Gmail is a trademark of Google LLC; ChatGPT is a trademark of
+OpenAI.
