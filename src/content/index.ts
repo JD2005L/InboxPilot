@@ -116,9 +116,24 @@ const panel = new ChatPanel({
   openSearch,
   openDraft,
   openEmail,
-  openSettings: (tab?: OptionsTab) => void send({ type: 'options/open', ...(tab ? { tab } : {}) }),
+  openSettings,
   connect: () => chrome.runtime.connect({ name: CHAT_PORT }),
+  orphaned: () => !alive(),
+  reload: () => location.reload(),
+  retry: loadStatus,
 });
+
+/**
+ * Opens the settings page. A tab left over from before the extension was reloaded or updated can no longer ask the
+ * extension for anything, so it reloads instead, which reconnects it.
+ */
+function openSettings(tab?: OptionsTab): void {
+  if (!alive()) {
+    location.reload();
+    return;
+  }
+  chrome.runtime.sendMessage<Request>({ type: 'options/open', ...(tab ? { tab } : {}) }).catch(() => location.reload());
+}
 
 const searchBar = new SearchBar({
   ask: (question) => {

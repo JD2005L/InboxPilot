@@ -184,6 +184,7 @@ code.q { font: 12px var(--mono); color: var(--on-surface); }
 .setup { padding: 4px 0 8px; }
 .setup h2 { margin: 0 0 6px; font: 400 18px/1.4 var(--display); }
 .setup p { margin: 0 0 14px; color: var(--on-variant); }
+.setup .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .checks { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 8px; }
 .checks li { display: flex; align-items: center; gap: 10px; }
 .checks .mark { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--outline); color: var(--on-primary); }
