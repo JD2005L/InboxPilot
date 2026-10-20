@@ -8,7 +8,7 @@
 //   checks  tick exactly the options marked true
 //   info    nothing to enter (shown for orientation)
 
-// Public pages on levac.net (the source repository is private, so its URLs are not reachable by the store).
+// Public pages on levac.net: the product page and privacy policy the store listing links to.
 export const SITE = 'https://levac.net/inbox-pilot/';
 
 export const SCREENSHOTS = ['1-ask-from-search.png', '2-attachments.png', '3-organize.png', '4-draft-reply.png', '5-setup.png'];
@@ -23,6 +23,7 @@ WHAT YOU CAN ASK
 • "Archive the promotions older than two weeks" (shows you the list first; you confirm, and can undo)
 • "Show me everything from the school this month" (runs the search in Gmail for you)
 • "Put my flights for the Toronto trip in my calendar" (shows each event first; nothing is added until you click Add)
+• "Whenever the school emails, send a summary to my phone" (sets up a rule you review and confirm)
 
 HOW IT FITS INTO GMAIL
 • Gmail's search bar keeps working exactly as before. Ordinary searches like from:bob invoice still search; questions go to ChatGPT. A small chip in the bar always shows which it will be, and one click flips it.
@@ -35,12 +36,14 @@ WHAT IT CAN DO
 • Draft: replies threaded into the conversation, or new emails. Drafts only: Inbox Pilot has no way to send.
 • Organize: ask it to tidy up and it proposes the change, showing you exactly which conversations it would touch. Nothing happens until you confirm, and Undo puts everything back. Anything moved to Trash stays recoverable for 30 days.
 • Calendar (optional): it turns bookings and appointments in your email into events, with the right times even when a flight crosses time zones, and checks your schedule for clashes. You approve each event before it is added; nobody is invited.
+• Rules (optional): automations you approve once, such as starring anything you would regret missing and sending a note to your phone, or filing receipts under a label as they arrive. Each rule pairs a Gmail search with an optional yes or no question for ChatGPT, and does only what you chose. Mail that arrives while your computer is off is handled when it is back. Rules sync between your computers, and only one of them runs them at a time. Every action is logged, with Undo.
 
 PRIVATE BY DESIGN
 • No Inbox Pilot server. It talks only to Google (Gmail, and Calendar if you connect it) and OpenAI (your ChatGPT account). The developer never sees your mail, questions or tokens.
 • Gmail access goes through a Google app you create and own (the guided setup walks you through it), not a shared app.
 • Email content is treated as data: ChatGPT is instructed never to follow instructions written inside an email.
 • Conversations exist only in the Gmail tab you asked in.
+• Open source: the complete code is public on GitHub, so you can check all of this yourself.
 
 REQUIREMENTS
 • A paid ChatGPT plan that includes Codex. Usage counts toward that plan's Codex limits.
@@ -58,7 +61,8 @@ const TEST_INSTRUCTIONS = `Inbox Pilot needs two accounts that only the reviewer
 4. Connect Gmail: click "Connect Gmail", choose the account, click Continue on "Google hasn't verified this app" (it is the reviewer's own app), tick both Gmail boxes, and continue.
 5. Open Gmail (reload any open Gmail tab). Type a question into the search bar, such as "what was the most recent email about?", and press Enter. The answer appears under the search bar with numbered sources.
 6. Try: "summarize this email" with an email open; "draft a reply saying thanks" (a draft opens; nothing is sent); "archive emails older than a year from noreply senders" (a list appears with Confirm and Cancel; nothing changes until Confirm, and Undo reverses it).
-7. Optional, Calendar: in the same Google Cloud project, enable the Google Calendar API (Settings, Connections, Google Calendar shows the link), then click "Connect Calendar" and tick the calendar box. In Gmail, open an email that mentions a date and ask "add this to my calendar": an event card appears with "Add to calendar" and Cancel; nothing is added until Add, and Undo removes it.`;
+7. Optional, Calendar: in the same Google Cloud project, enable the Google Calendar API (Settings, Connections, Google Calendar shows the link), then click "Connect Calendar" and tick the calendar box. In Gmail, open an email that mentions a date and ask "add this to my calendar": an event card appears with "Add to calendar" and Cancel; nothing is added until Add, and Undo removes it.
+8. Optional, Rules: open Settings, Rules, choose the example "Don't miss what matters", and click "Test on recent mail": it lists which recent emails would match, without changing anything. Save it to run it about once a minute while Chrome is open; the Activity list shows what it did, with Undo. A rule can also be created by asking in Gmail, for example "whenever I get an invoice, label it Bills", which shows a rule card with "Create rule" and Cancel.`;
 
 export function storeListing(version) {
   return [
@@ -101,7 +105,7 @@ export function storeListing(version) {
           kind: 'text',
           limit: 1000,
           value:
-            "Lets the user ask ChatGPT, through their own ChatGPT account, to find, read, draft and organize their Gmail, from Gmail's search bar: it answers questions about their mail with links to the emails, reads attachments, saves draft replies, and archives, labels or otherwise organizes conversations only after the user confirms.",
+            "Lets the user ask ChatGPT, through their own ChatGPT account, to find, read, draft and organize their Gmail, from Gmail's search bar: it answers questions about their mail with links to the emails, reads attachments, saves draft replies, organizes conversations and adds calendar events only after the user confirms, and runs mail rules the user set up in advance.",
         },
         {
           label: 'storage justification',
@@ -136,12 +140,19 @@ export function storeListing(version) {
             'Runs the automation rules the user set up in the settings page (for example "star and notify me about important new mail" or "archive promotions older than two weeks") about once a minute while Chrome is open. Each run checks Gmail for new mail since the last run and applies only the actions the user configured for that rule. With no rules, a run only refreshes the browser\'s status.',
         },
         {
+          label: 'notifications justification',
+          kind: 'text',
+          limit: 1000,
+          value:
+            'Optional permission, not granted at install. Asked for only when the user saves a rule with the "Desktop notification" action (for example "notify me about important new mail"), to show that notification. Clicking it opens the email in Gmail.',
+        },
+        {
           label: 'Host permission justification',
           required: true,
           kind: 'text',
           limit: 1000,
           value:
-            "https://mail.google.com/*: the content script adds the Ask chip and answer panel to Gmail's search bar, decides whether Enter searches or asks, and reads which conversation is open (from the page) so \"this email\" works. https://gmail.googleapis.com/*: the Gmail API, to search and read mail and attachments, save drafts, and apply confirmed label changes. https://oauth2.googleapis.com/*: only to revoke the Google token when the user disconnects. https://auth.openai.com/*: ChatGPT device-code sign-in and token renewal. https://chatgpt.com/*: sends the question, conversation and the email content the answer needs to the user's own ChatGPT account and streams the answer back. No other hosts.",
+            "https://mail.google.com/*: the content script adds the Ask chip and answer panel to Gmail's search bar, decides whether Enter searches or asks, and reads which conversation is open (from the page) so \"this email\" works. https://gmail.googleapis.com/*: the Gmail API, to search and read mail and attachments, save drafts, and apply confirmed label changes. https://oauth2.googleapis.com/*: only to revoke the Google token when the user disconnects. https://auth.openai.com/*: ChatGPT device-code sign-in and token renewal. https://chatgpt.com/*: sends the question, conversation and the email content the answer needs to the user's own ChatGPT account and streams the answer back. Optional host permissions (https://*/*, http://*/*) are never granted at install: when the user adds a webhook destination for a rule (for example their own Home Assistant or a phone notification service), Chrome asks for that one site, and only rules the user set up post to it.",
         },
         { label: 'Are you using remote code?', required: true, kind: 'choice', value: 'No, I am not using Remote code', note: 'All code ships in the package (pdf.js included). No eval, remote scripts or WebAssembly.' },
         {
@@ -152,7 +163,7 @@ export function storeListing(version) {
             ['Health information', false],
             ['Financial and payment information', false, 'Not collected. It may appear in emails the user asks about (an invoice), which falls under personal communications.'],
             ['Authentication information', true, 'Google and ChatGPT tokens, kept in the browser and sent only to Google and OpenAI respectively.'],
-            ['Personal communications', true, 'Email content: read from Gmail only to answer the user, and sent to the user\'s own ChatGPT account for that answer. Not stored or sent anywhere else.'],
+            ['Personal communications', true, 'Email content: read from Gmail only to answer the user or run the rules the user set up, and sent to the user\'s own ChatGPT account for that. A rule with a webhook sends the sender, subject, a link and a one-line summary to the address the user entered. Not stored or sent anywhere else.'],
             ['Location', false],
             ['Web history', false],
             ['User activity', false],

@@ -1,6 +1,6 @@
 # Inbox Pilot privacy policy
 
-*Last updated: 2026-10-19*
+*Last updated: 2026-10-20*
 
 Inbox Pilot is a Chrome extension that lets you ask ChatGPT about your Gmail from Gmail's search bar, and have it
 find, read, draft and organize your mail, and add events to your Google Calendar, when you ask. It runs on your own
