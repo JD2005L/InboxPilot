@@ -10,7 +10,7 @@ sources, drafts replies, tidies your inbox and fills your calendar. On your own 
 <a href="https://jd2005l.github.io/InboxPilot/">Website</a> ·
 <a href="#install">Install</a> ·
 <a href="PRIVACY.md">Privacy</a> ·
-<a href="https://github.com/sponsors/JD2005L">Sponsor</a>
+<a href="https://paypal.me/jlevac84">Donate</a>
 </p>
 
 ![Gmail with the Inbox Pilot answer panel under the search bar, answering when a flight leaves, with numbered source emails (sample mailbox)](site/images/ask.png)
@@ -177,7 +177,7 @@ run `npm run check` before sending a change. For a setup problem, include your C
 page shows.
 
 Inbox Pilot is free with nothing held back. If it saves you time, you can
-[sponsor its upkeep](https://github.com/sponsors/JD2005L). Teams on Google Workspace can have it
+[chip in toward its upkeep](https://paypal.me/jlevac84). Teams on Google Workspace can have it
 [set up for them](https://jd2005l.github.io/InboxPilot/teams.html).
 
 More by the author: [GitHub Actions Monitor](https://jd2005l.github.io/GithubActionsMonitor/) and
