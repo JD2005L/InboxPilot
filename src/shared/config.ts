@@ -6,6 +6,11 @@ export interface RuntimeConfig {
   chatgptBase: string;
   googleAuthBase: string;
   gmailBase: string;
+  /**
+   * Google Calendar API. Reached without a host permission: Google's APIs answer CORS for any origin, so adding
+   * Calendar did not add a permission warning that would disable existing installs on update.
+   */
+  calendarBase: string;
   /** Codex CLI version reported when asking for the model catalog. */
   clientVersion: string;
   /** package.json version. */

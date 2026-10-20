@@ -7,6 +7,7 @@ export default defineConfig({
       chatgptBase: 'https://chatgpt.com/backend-api/codex',
       googleAuthBase: 'https://accounts.google.com',
       gmailBase: 'https://gmail.googleapis.com',
+      calendarBase: 'https://www.googleapis.com/calendar/v3',
       clientVersion: '0.163.0',
       version: '0.0.0-test',
       googleClientId: '',

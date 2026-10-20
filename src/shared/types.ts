@@ -2,7 +2,7 @@
 export interface Problem {
   message: string;
   /** Points the settings page at the instructions that fix it. */
-  fix?: 'enable-device-code' | 'workspace-admin' | 'google-client' | 'google-scope' | 'google-test-user' | 'google-api-disabled';
+  fix?: 'enable-device-code' | 'workspace-admin' | 'google-client' | 'google-scope' | 'google-test-user' | 'google-api-disabled' | 'calendar-api-disabled' | 'calendar-scope';
 }
 
 export type ChatgptState =
@@ -17,8 +17,12 @@ export type GmailState =
   /** No Google OAuth client ID saved yet. */
   | { kind: 'no-client' }
   | { kind: 'signed-out'; problem?: Problem }
-  /** canModify: drafts and organizing are allowed (gmail.modify granted); false means read-only. */
-  | { kind: 'signed-in'; email: string; canModify: boolean };
+  /**
+   * canModify: drafts and organizing are allowed (gmail.modify granted); false means read-only.
+   * canCalendar: Google Calendar events can be read and added (calendar.events granted). Optional, added later.
+   * calendarProblem: what went wrong the last time the user tried to connect Calendar.
+   */
+  | { kind: 'signed-in'; email: string; canModify: boolean; canCalendar: boolean; calendarProblem?: Problem };
 
 export const EFFORTS = ['low', 'medium', 'high'] as const;
 export type Effort = (typeof EFFORTS)[number];

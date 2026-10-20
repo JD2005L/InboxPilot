@@ -1,11 +1,14 @@
 import { ORGANIZE_ACTIONS, type ChatClientMessage, type ChatFix, type ChatServerMessage, type OrganizeAction, type ProposalItem } from '../../shared/messages';
 import type { ConversationItem, EmailRef, ModelOption, Preferences } from '../../shared/types';
+import type { CalendarApi } from '../calendar/api';
+import { eventLine, parseEvent } from '../calendar/event';
 import { ChatgptError, type ChatgptClient } from '../chatgpt/client';
 import { GmailApiError, type GmailApi } from '../gmail/api';
 import { ATTACHMENT_BYTE_LIMIT, attachmentText, type PdfReader } from '../gmail/attachments';
 import { extractBody, header, messageDate, searchLine, threadText, toRef } from '../gmail/message';
 import { buildRaw, replyFields } from '../gmail/mime';
-import { systemPrompt, TOOLS } from './prompt';
+import { addDays, DATE_RE, describeWhen, wallMs, zonedToUtc } from '../../shared/when';
+import { CALENDAR_TOOLS, systemPrompt, TOOLS } from './prompt';
 
 /** Model turns per question. Each turn may run several tools in parallel; real questions settle in two to four. */
 export const MAX_ROUNDS = 8;
@@ -15,6 +18,10 @@ const THREAD_ID_RE = /^[A-Za-z0-9]{6,40}$/;
 /** Conversations one proposal may cover: enough for a real clean-up, small enough to review. */
 export const PROPOSAL_LIMIT = 100;
 const READ_ONLY = 'Gmail access is read-only right now. Tell the user to reconnect Gmail in Inbox Pilot settings and allow it to manage email, then ask again.';
+const NO_CALENDAR = 'Google Calendar is not connected. Tell the user to connect Calendar in Inbox Pilot settings (Connections), then ask again.';
+/** Days one check_calendar call may span, and events it returns. */
+const CALENDAR_DAYS = 62;
+const CALENDAR_EVENTS = 50;
 
 export interface ChatEngineDeps {
   client: ChatgptClient;
@@ -24,6 +31,9 @@ export interface ChatEngineDeps {
   gmailEmail: () => Promise<string | null>;
   /** Whether the Gmail sign-in allows drafts and organizing. */
   canModify: () => Promise<boolean>;
+  calendar: CalendarApi;
+  /** Whether the Google sign-in includes Calendar access. */
+  canCalendar: () => Promise<boolean>;
   readPdf: PdfReader;
 }
 
@@ -52,8 +62,9 @@ export class ChatEngine {
     const { model, effort } = pick(await this.deps.models(), prefs);
     const tz = validTimeZone(ask.timeZone);
     const context = ask.context && THREAD_ID_RE.test(ask.context.threadId) ? { threadId: ask.context.threadId, subject: String(ask.context.subject).slice(0, 300) } : null;
-    const canModify = await this.deps.canModify();
-    const developer: ConversationItem = { type: 'message', role: 'developer', content: [{ type: 'input_text', text: systemPrompt({ email, timeZone: tz, now: ask.now, openEmail: context, canModify }) }] };
+    const [canModify, canCalendar] = await Promise.all([this.deps.canModify(), this.deps.canCalendar()]);
+    const tools = canCalendar ? [...TOOLS, ...CALENDAR_TOOLS] : TOOLS;
+    const developer: ConversationItem = { type: 'message', role: 'developer', content: [{ type: 'input_text', text: systemPrompt({ email, timeZone: tz, now: ask.now, openEmail: context, canModify, canCalendar }) }] };
     const question: ConversationItem = { type: 'message', role: 'user', content: [{ type: 'input_text', text: ask.question.slice(0, 4000) }] };
     const history = trimHistory(ask.history.filter(isItem), HISTORY_CHAR_BUDGET);
     const turn: ConversationItem[] = [question];
@@ -71,7 +82,7 @@ export class ChatEngine {
           effort,
           input: [developer, ...history, ...turn],
           // On the last round the model must answer with what it has.
-          tools: last ? [] : TOOLS,
+          tools: last ? [] : tools,
           conversationId: ask.conversationId,
           signal,
         },
@@ -89,14 +100,14 @@ export class ChatEngine {
         },
       );
       if (!calls.length) break;
-      const outputs = await Promise.all(calls.map((call) => this.runTool(call, tz, prefs, seen, emit, signal, email)));
+      const outputs = await Promise.all(calls.map((call) => this.runTool(call, tz, prefs, seen, emit, signal, email, ask.now)));
       calls.forEach((call, i) => turn.push({ type: 'function_call_output', call_id: call.callId, output: outputs[i]! }));
     }
     emit({ type: 'done', items: [...history, ...turn], text });
   }
 
   /** Runs one tool call. Failures go back to the model as text so it can try another way, except sign-in problems. */
-  private async runTool(call: FunctionCall, timeZone: string, prefs: Preferences, seen: Map<string, EmailRef>, emit: (message: ChatServerMessage) => void, signal: AbortSignal, self: string | null): Promise<string> {
+  private async runTool(call: FunctionCall, timeZone: string, prefs: Preferences, seen: Map<string, EmailRef>, emit: (message: ChatServerMessage) => void, signal: AbortSignal, self: string | null, now: number): Promise<string> {
     try {
       if (call.name === 'search_emails') {
         const query = typeof call.args.query === 'string' ? call.args.query.trim().slice(0, 500) : '';
@@ -151,6 +162,8 @@ export class ChatEngine {
       if (call.name === 'read_attachment') return await this.readAttachment(call, emit, signal);
       if (call.name === 'create_draft') return await this.createDraft(call, seen, emit, signal, self);
       if (call.name === 'propose_actions') return await this.propose(call, emit, signal);
+      if (call.name === 'check_calendar') return await this.checkCalendar(call, timeZone, emit, signal, now);
+      if (call.name === 'propose_event') return await this.proposeEvent(call, timeZone, seen, emit, signal, now);
       return JSON.stringify({ error: `unknown tool ${call.name}` });
     } catch (error) {
       if (signal.aborted || (error instanceof GmailApiError && error.auth)) throw error;
@@ -234,6 +247,46 @@ export class ChatEngine {
         action === 'unsubscribe'
           ? 'The panel lists each sender with a button that opens its unsubscribe page. Nothing has been unsubscribed.'
           : 'The panel shows this list with Confirm and Cancel. Nothing has changed yet; do not say it is done.',
+    });
+  }
+  /** The user's primary calendar between two dates (inclusive), in their time zone. */
+  private async checkCalendar(call: FunctionCall, timeZone: string, emit: (message: ChatServerMessage) => void, signal: AbortSignal, now: number): Promise<string> {
+    if (!(await this.deps.canCalendar())) return JSON.stringify({ error: NO_CALENDAR });
+    const from = typeof call.args.start_date === 'string' ? call.args.start_date.trim() : '';
+    const to = (typeof call.args.end_date === 'string' ? call.args.end_date.trim() : '') || from;
+    if (!DATE_RE.test(from) || !DATE_RE.test(to) || Number.isNaN(wallMs(from)) || Number.isNaN(wallMs(to))) return JSON.stringify({ error: 'start_date and end_date must be "YYYY-MM-DD"' });
+    if (wallMs(to) < wallMs(from)) return JSON.stringify({ error: 'end_date must not be before start_date' });
+    if (wallMs(to) - wallMs(from) > CALENDAR_DAYS * 86_400_000) return JSON.stringify({ error: `at most ${CALENDAR_DAYS} days per check; split the range` });
+    emit({ type: 'step', kind: 'calendar', label: describeWhen({ start: from, end: to, allDay: true, timeZone, endTimeZone: timeZone }, timeZone, now).replace(' · all day', '') });
+    const timeMin = new Date(zonedToUtc(`${from}T00:00`, timeZone)).toISOString();
+    const timeMax = new Date(zonedToUtc(`${addDays(to, 1)}T00:00`, timeZone)).toISOString();
+    const events = await this.deps.calendar.list(timeMin, timeMax, timeZone, CALENDAR_EVENTS, signal);
+    return JSON.stringify({ calendar: 'primary', time_zone: timeZone, start_date: from, end_date: to, count: events.length, events: events.map(eventLine), ...(events.length >= CALENDAR_EVENTS ? { note: 'more events exist; check a shorter range' } : {}) });
+  }
+
+  /** Proposes one calendar event. Nothing is added until the user clicks Add in the panel. */
+  private async proposeEvent(call: FunctionCall, timeZone: string, seen: Map<string, EmailRef>, emit: (message: ChatServerMessage) => void, signal: AbortSignal, now: number): Promise<string> {
+    if (!(await this.deps.canCalendar())) return JSON.stringify({ error: NO_CALENDAR });
+    const draft = parseEvent(call.args, timeZone);
+    if ('error' in draft) return JSON.stringify(draft);
+    // The source email is looked up, so the event links a real conversation and shows its real subject.
+    const threadId = typeof call.args.thread_id === 'string' ? call.args.thread_id.trim() : '';
+    let source: { threadId: string; subject: string } | undefined;
+    if (threadId) {
+      if (!THREAD_ID_RE.test(threadId)) return JSON.stringify({ error: 'thread_id must be one returned by search_emails' });
+      const known = seen.get(threadId);
+      const subject = known ? known.subject : header((await this.deps.gmail.threadSummary(threadId, signal))?.payload, 'Subject');
+      source = { threadId, subject: subject || '(no subject)' };
+    }
+    const summary = typeof call.args.summary === 'string' ? call.args.summary.trim().slice(0, 300) : '';
+    const { location, description, ...rest } = draft;
+    emit({ type: 'event-proposal', event: { id: crypto.randomUUID(), ...rest, ...(location ? { location } : {}), ...(description ? { description } : {}), ...(source ? { source } : {}), summary } });
+    return JSON.stringify({
+      proposed: true,
+      title: draft.title,
+      when: describeWhen(draft, timeZone, now),
+      status: 'waiting for the user',
+      note: 'The panel shows this event with Add to calendar and Cancel. It is not on the calendar yet; do not say it was added.',
     });
   }
 }

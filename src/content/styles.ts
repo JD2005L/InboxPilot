@@ -258,6 +258,17 @@ textarea:focus-visible { outline: none; }
 .text-button .icon { width: 16px; height: 16px; }
 .button:disabled { opacity: 0.4; cursor: default; box-shadow: none; }
 
+/* Proposed calendar event: Calendar-style block with the details, linked to the email it came from. */
+.event-body { display: flex; gap: 12px; padding: 4px 16px 10px; }
+.event-icon { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--primary-container); color: var(--on-primary-container); }
+.event-icon .icon { width: 18px; height: 18px; }
+.event-text { display: grid; gap: 2px; min-width: 0; line-height: 1.4; font-size: 13.5px; }
+.event-text .subject { color: var(--on-surface); font-weight: 600; }
+.event-text .from { color: var(--on-variant); }
+.event-notes { color: var(--on-variant); font-size: 12.5px; white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.event-source { margin: 0 16px 8px 52px; max-width: calc(100% - 68px); height: 28px; padding: 0 10px; font-size: 13px; }
+.event-source { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-flex; justify-content: flex-start; }
+
 /* Wide panel: keep lines at a readable length instead of stretching across the screen. */
 .panel.expanded .scroll > *, .panel.expanded form.composer .field { max-width: 760px; margin-left: auto; margin-right: auto; }
 .icon-more { stroke-width: 2.75; }

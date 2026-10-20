@@ -2,7 +2,7 @@
 
 A Chrome (Manifest V3) extension that puts **ChatGPT at the controls of your Gmail**. Type a question into Gmail's
 search bar and press Enter: ChatGPT searches your mailbox, reads what it needs (attachments included), answers with
-numbered links to the exact emails, drafts replies, and organizes mail when you ask. It runs on **your own ChatGPT
+numbered links to the exact emails, drafts replies, organizes mail, and adds events to Google Calendar when you ask. It runs on **your own ChatGPT
 plan** (no API key) and reads Gmail through a **Google app you own** (no server; nobody else gets access). It is not
 Gmail's built-in "Ask Gmail".
 
@@ -27,9 +27,11 @@ If Gmail's layout changes so the search bar cannot be found, a floating **Ask yo
 | **Show** | "Pull it up" opens the email in Gmail; "show me everything from…" runs the search in Gmail's list. |
 | **Draft** | Replies threaded into the conversation (In-Reply-To/References, Re: subject, right recipient) or new emails, saved as drafts and opened. **No send capability exists.** |
 | **Organize** | Archive, mark read/unread, star/unstar, add/remove label (created if missing), move to inbox, Trash (30-day recoverable). Always a **proposal**: the panel lists the conversations (untick any), Confirm applies, **Undo** reverses. Unsubscribe lists each sender's own unsubscribe link instead. |
+| **Calendar** (optional) | "Put my flights in my calendar": events from bookings and appointments, with local times and time zones as the email states them (a flight departs in one zone and lands in another), the details for the day, and a link back to the email. Each is a **proposal** card: **Add to calendar**, then **Undo** if needed. "Am I free Thursday afternoon?" reads the primary calendar. Nobody is invited; existing events are never changed. |
 
 Organizing is fenced in the background: a Confirm can only touch conversations that proposal showed (`ProposalBook`),
-each proposal applies once, and every target is looked up first so the model cannot invent one. Email content is
+each proposal applies once, and every target is looked up first so the model cannot invent one. Calendar events get
+the same fence (`EventBook`): Add creates exactly the event the card showed, once. Email content is
 treated as untrusted data in the prompt and is never rendered as HTML (lint forbids `innerHTML`).
 
 ## How it works
@@ -40,8 +42,10 @@ Gmail tab (content script: search-bar chip + answer panel, shadow DOM)
    ▼
 Service worker
    ├─ ChatGPT: device-pairing sign-in → chatgpt.com/backend-api/codex/responses (streamed, store: false)
-   │     tools: search_emails, read_thread, read_attachment, open_email, show_in_gmail, create_draft, propose_actions
+   │     tools: search_emails, read_thread, read_attachment, open_email, show_in_gmail, create_draft, propose_actions,
+   │            check_calendar and propose_event (only while Calendar is connected)
    ├─ Gmail API with a token from the user's own Google OAuth client (gmail.readonly, plus gmail.modify if granted)
+   ├─ Calendar API, same token, when the user connected Calendar (calendar.events; CORS, so no host permission)
    └─ Offscreen document (only while reading a PDF): pdf.js text extraction
 ```
 
@@ -90,6 +94,8 @@ error Google or OpenAI can show:
 3. **Connect Gmail.** Pick the account, *Continue* on "Google hasn't verified this app" (it is your own app), tick
    both Gmail boxes (the second enables drafts and organizing).
 4. **Ask.** Type a question in Gmail's search bar and press Enter.
+5. **Calendar (optional).** Enable the Google Calendar API in the same project, then *Connect Calendar* under
+   Connections and tick the calendar box. The settings page checks the API is on.
 
 ## Development
 
@@ -107,6 +113,7 @@ Playwright's Chromium (`npx playwright install chromium`).
 |---|---|
 | `src/background/chatgpt/` | Device pairing, token refresh (single-flight; refresh tokens rotate), Responses API streaming client |
 | `src/background/gmail/` | Google sign-in, Gmail API, message/MIME parsing, attachment text (ZIP reader for Office files), draft MIME builder |
+| `src/background/calendar/` | Calendar API client, event validation (wall-clock times in IANA zones), the event proposal fence |
 | `src/background/chat/` | System prompt, tool definitions, the tool loop, organize/undo and the proposal fence |
 | `src/offscreen/` | pdf.js PDF text extraction, loaded only on demand |
 | `src/content/` | Search-bar integration (Enter routing, chip), the answer panel, theme detection |

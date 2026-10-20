@@ -1,7 +1,7 @@
 import { PLACEHOLDER } from '../content/intent';
 import { h, icon } from '../shared/dom';
 import { isBroadcast, OPTIONS_TABS, type Diagnostics, type OptionsTab, type Request, type Response } from '../shared/messages';
-import { EFFORTS, type ChatgptState, type Effort, type Preferences, type Problem } from '../shared/types';
+import { EFFORTS, type ChatgptState, type Effort, type GmailState, type Preferences, type Problem } from '../shared/types';
 import { clientIdProblem } from '../background/gmail/auth';
 import { planLabel } from '../background/chatgpt/jwt';
 import { APP_NAME, CHATGPT_SECURITY_URL, currentSubstep, defaultWizard, GMAIL_URL, GOOGLE_SUBSTEPS, GOOGLE_URLS, parseWizard, setupStep, WIZARD_KEY, type GoogleSubstep, type SetupStep, type Wizard } from './setup';
@@ -498,6 +498,13 @@ function problemFix(d: Diagnostics, fix: Problem['fix']): HTMLElement | null {
       return box(h('p', {}, 'Your ChatGPT account belongs to a workspace (Business, Enterprise or Edu) whose admin has turned device code sign-in off. Ask them to allow “device code sign-in for Codex” in the workspace permissions, or connect a personal ChatGPT account instead.'));
     case 'google-api-disabled':
       return box(h('div', { className: 'row' }, link('Turn on the Gmail API', GOOGLE_URLS.gmailApi, 'button primary')), h('p', { className: 'muted' }, 'Check the project picker at the top shows your Inbox Pilot project, click Enable, wait a minute, then connect again.'));
+    case 'calendar-api-disabled':
+      return box(
+        h('div', { className: 'row' }, link('Turn on the Google Calendar API', GOOGLE_URLS.calendarApi, 'button primary')),
+        h('p', { className: 'muted' }, 'Check the project picker at the top shows your Inbox Pilot project, click Enable, wait a minute, then click Connect Calendar again.'),
+      );
+    case 'calendar-scope':
+      return box(h('p', {}, 'Click ', ui('Connect Calendar'), ' again. On Google’s permission screen, tick ', ui('View and edit events on all your calendars'), ' before clicking Continue.'));
     case 'google-scope':
       return box(h('p', {}, 'Click ', ui('Connect Gmail'), ' again. On Google’s permission screen, tick ', ui('View your email messages and settings'), ' before clicking Continue. Tick the second Gmail box too if you want drafts and organizing.'));
     case 'google-test-user':
@@ -546,6 +553,7 @@ function doneStage(d: Diagnostics): (Node | string)[] {
       h('li', {}, 'What’s the confirmation number for my next hotel stay?'),
       h('li', {}, 'Did the contractor ever send a quote for the deck?'),
       h('li', {}, 'Which subscriptions renewed in the last 30 days, and for how much?'),
+      h('li', {}, 'Put my flights for the Toronto trip in my calendar.'),
     ),
     h(
       'div',
@@ -603,8 +611,46 @@ function connectionsCard(d: Diagnostics): HTMLElement {
           : button('Connect', () => selectTab('setup'), 'primary'),
       ),
     ),
+    ...(gmail.kind === 'signed-in' ? calendarRow(d, gmail) : []),
     h('p', { className: 'muted' }, 'Each browser connects separately. Sign-ins stay in this browser’s extension storage and never leave it except to OpenAI and Google.'),
   );
+}
+
+/** Optional Google Calendar access, on the same Google sign-in: the API to turn on, then one more permission. */
+function calendarRow(d: Diagnostics, gmail: Extract<GmailState, { kind: 'signed-in' }>): HTMLElement[] {
+  const connect = (label: string) => button(label, () => void act({ type: 'gmail/connect', calendar: true }, undefined, 'calendar-connect'), 'primary', 'calendar-connect');
+  const nodes: HTMLElement[] = [
+    h(
+      'div',
+      { className: 'conn' },
+      h('span', { className: 'logo' }, icon('calendar')),
+      h(
+        'div',
+        { className: 'who' },
+        h('strong', {}, 'Google Calendar'),
+        h('span', { className: 'muted' }, gmail.canCalendar && !gmail.calendarProblem ? `${gmail.email} · checks your schedule, adds events you confirm` : 'Optional: add flights, bookings and appointments from your email'),
+      ),
+      h('div', { className: 'actions' }, gmail.canCalendar && !gmail.calendarProblem ? null : connect(gmail.calendarProblem ? 'Try again' : 'Connect Calendar')),
+    ),
+  ];
+  if (gmail.calendarProblem) nodes.push(...problemBlock(d, gmail.calendarProblem));
+  if (!gmail.canCalendar) {
+    nodes.push(
+      h(
+        'details',
+        { className: 'guide', 'data-key': 'calendar-guide' },
+        h('summary', {}, 'How to connect Calendar (two minutes)'),
+        h(
+          'ol',
+          { className: 'substeps' },
+          h('li', {}, 'Turn on the Calendar API in the same Google Cloud project you made for Gmail: ', link('Open the Google Calendar API page', GOOGLE_URLS.calendarApi), '. Check the project picker at the top says ', ui(APP_NAME), ', then click ', ui('Enable'), '.'),
+          h('li', {}, 'Click ', ui('Connect Calendar'), ' above. Google lists what Inbox Pilot already has, plus ', ui('View and edit events on all your calendars'), '. Tick it and click ', ui('Continue'), '.'),
+        ),
+        h('p', { className: 'muted' }, 'Inbox Pilot only adds an event after you click Add on it, never invites anyone, and leaves the events already in your calendar alone. Undo removes an event it added.'),
+      ),
+    );
+  }
+  return nodes;
 }
 
 /** Plain statement of exactly what the extension changes in Gmail, so nobody has to guess. */

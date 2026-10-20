@@ -3,17 +3,19 @@
 *Last updated: 2026-10-19*
 
 Inbox Pilot is a Chrome extension that lets you ask ChatGPT about your Gmail from Gmail's search bar, and have it
-find, read, draft and organize your mail when you ask. It runs on your own ChatGPT account and reads Gmail through a
-Google app that you create and own.
+find, read, draft and organize your mail, and add events to your Google Calendar, when you ask. It runs on your own
+ChatGPT account and reads Gmail (and, if you connect it, Google Calendar) through a Google app that you create and own.
 
 **In short:** Inbox Pilot has no server. The developer never receives, stores or sees your email, your questions, the
-answers, or any sign-in token. The extension talks only to Google (your Gmail) and OpenAI (your ChatGPT account).
+answers, or any sign-in token. The extension talks only to Google (your Gmail and Calendar) and OpenAI (your ChatGPT
+account).
 
 ## What it accesses
 
 | Data | Where it comes from | Why |
 |---|---|---|
 | Email messages, threads and attachments | The Gmail API, through your own Google app, only when you ask a question | To find and read what answers your question |
+| Calendar events on your primary calendar, for the days asked about (title, time, location) | The Google Calendar API, only if you connect Calendar, and only when a question needs your schedule | To answer what is on your calendar, whether you are free, or whether something clashes |
 | Your Gmail address | The Gmail API, after you connect | To show which account is connected, to address drafts, and to open emails in the right account |
 | Your ChatGPT account email and plan | OpenAI's sign-in, after you connect | To show which ChatGPT account is connected |
 | Google and ChatGPT sign-in tokens | The sign-ins you start in the settings page | To use Gmail and ChatGPT on your behalf |
@@ -30,6 +32,13 @@ Only when you ask, and only with the "manage your email" access you can grant (o
   Confirm; Undo reverses it. It cannot delete anything permanently.
 - **Unsubscribe:** it only shows each sender's own unsubscribe link for you to open.
 
+## What it can change in your Google Calendar
+
+Only if you connect Calendar (optional, a separate permission), and only events you approve: when you ask, it shows a
+proposed event (title, time, place, and the email it came from) and adds it to your primary calendar only when you
+click Add. Undo removes it again. It never invites anyone, and it does not change or delete events already on your
+calendar.
+
 ## Where data goes
 
 | Data | Sent to | Why |
@@ -37,6 +46,8 @@ Only when you ask, and only with the "manage your email" access you can grant (o
 | Gmail searches, and the messages and attachments needed to answer | Google (Gmail API), then OpenAI | To find what answers your question, and for ChatGPT to write the answer |
 | Your question and the conversation so far | OpenAI (your ChatGPT account) | To answer it. Requests are sent with storage off (`store: false`); OpenAI's handling is governed by your ChatGPT account's terms and data controls |
 | Drafts and confirmed organizing changes | Google (Gmail API) | To save the draft or apply the change you confirmed |
+| Calendar events you asked about | Google (Calendar API), then OpenAI | For ChatGPT to answer questions about your schedule |
+| Events you clicked Add on | Google (Calendar API) | To add them to your calendar |
 | Sign-in requests | Google (accounts.google.com), OpenAI (auth.openai.com) | To connect and keep your accounts connected |
 
 Nothing is sent anywhere else. There is no analytics, tracking or advertising. Attachments are downloaded and turned
@@ -59,7 +70,8 @@ organizes, and changes to your mailbox always wait for your confirmation.
 
 ## Your control
 
-- Disconnect ChatGPT or Gmail any time in the extension's settings. Disconnecting Gmail also revokes the Google token.
+- Disconnect ChatGPT or Gmail any time in the extension's settings. Disconnecting Gmail also revokes the Google token,
+  including Calendar access.
 - Remove the app's access at <https://myaccount.google.com/connections>, and review ChatGPT sessions in ChatGPT's
   security settings.
 - Uninstalling the extension deletes everything it stored in this browser.
@@ -68,8 +80,9 @@ organizes, and changes to your mailbox always wait for your confirmation.
 
 Inbox Pilot's use and transfer of information received from Google APIs adheres to the
 [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including
-the Limited Use requirements. Gmail data is used only to provide the features you use (answering your questions,
-saving drafts you ask for, and organizing you confirm), is transferred only to OpenAI for the answers you request,
+the Limited Use requirements. Gmail and Calendar data is used only to provide the features you use (answering your
+questions, saving drafts you ask for, organizing you confirm, and adding events you approve), is transferred only to
+OpenAI for the answers you request,
 is not used for advertising, is not sold, and is not read by any person.
 
 ## Contact

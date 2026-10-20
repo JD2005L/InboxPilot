@@ -51,6 +51,7 @@ export function currentSubstep(wizard: Wizard): GoogleSubstep | null {
 export const GOOGLE_URLS = {
   createProject: 'https://console.cloud.google.com/projectcreate',
   gmailApi: 'https://console.cloud.google.com/apis/library/gmail.googleapis.com',
+  calendarApi: 'https://console.cloud.google.com/apis/library/calendar-json.googleapis.com',
   authOverview: 'https://console.cloud.google.com/auth/overview',
   audience: 'https://console.cloud.google.com/auth/audience',
   createClient: 'https://console.cloud.google.com/auth/clients/create',

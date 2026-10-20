@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ChatEngine, MAX_ROUNDS, pick, trimHistory } from '../src/background/chat/engine';
+import type { CalendarApi } from '../src/background/calendar/api';
 import type { ChatgptClient, ResponseRequest, StreamHandlers } from '../src/background/chatgpt/client';
 import { GmailApiError, type GmailApi } from '../src/background/gmail/api';
 import type { GmailMessage } from '../src/background/gmail/message';
@@ -33,7 +34,7 @@ function engineWith(turns: Turn[], gmail: Partial<GmailApi> = {}) {
     }),
   } as unknown as ChatgptClient;
   const api = { search: vi.fn().mockResolvedValue([hit]), thread: vi.fn().mockResolvedValue([hit]), ...gmail } as unknown as GmailApi;
-  const engine = new ChatEngine({ client, gmail: api, prefs: () => Promise.resolve(DEFAULT_PREFERENCES), models: () => Promise.resolve(MODELS), gmailEmail: () => Promise.resolve('me@example.com'), canModify: () => Promise.resolve(true), readPdf: () => Promise.resolve('') });
+  const engine = new ChatEngine({ client, gmail: api, prefs: () => Promise.resolve(DEFAULT_PREFERENCES), models: () => Promise.resolve(MODELS), gmailEmail: () => Promise.resolve('me@example.com'), canModify: () => Promise.resolve(true), calendar: {} as CalendarApi, canCalendar: () => Promise.resolve(false), readPdf: () => Promise.resolve('') });
   return { engine, requests, api };
 }
 

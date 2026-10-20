@@ -1,6 +1,9 @@
 import { CONFIG } from '../shared/config';
 import { CHAT_PORT, OPTIONS_TABS, PRIVILEGED_TYPES, type Broadcast, type ChatClientMessage, type ChatServerMessage, type Diagnostics, type PanelStatus, type Request, type Response } from '../shared/messages';
 import { DEFAULT_PREFERENCES, EFFORTS, type ModelOption, type Preferences } from '../shared/types';
+import { CalendarApi } from './calendar/api';
+import { EventBook } from './calendar/book';
+import { eventResource, gmailThreadUrl } from './calendar/event';
 import { ChatEngine } from './chat/engine';
 import { ChatgptClient } from './chatgpt/client';
 import { ChatgptSession } from './chatgpt/session';
@@ -38,6 +41,7 @@ const gmailAuth = new GmailAuth({
   defaultClientId: CONFIG.googleClientId,
   authBase: CONFIG.googleAuthBase,
   gmailBase: CONFIG.gmailBase,
+  calendarBase: CONFIG.calendarBase,
   local: chrome.storage.local,
   sync: chrome.storage.sync,
   identity: chrome.identity,
@@ -45,6 +49,7 @@ const gmailAuth = new GmailAuth({
   onChange: broadcast,
 });
 const gmail = new GmailApi({ fetch: boundFetch, base: CONFIG.gmailBase, auth: gmailAuth });
+const calendar = new CalendarApi({ fetch: boundFetch, base: CONFIG.calendarBase, auth: gmailAuth });
 const organizer = new Organizer(gmail);
 const engine = new ChatEngine({
   client,
@@ -52,12 +57,16 @@ const engine = new ChatEngine({
   prefs,
   models: () => models(),
   canModify: () => gmailAuth.canModify(),
+  calendar,
+  canCalendar: () => gmailAuth.canCalendar(),
   readPdf,
-  gmailEmail: async () => {
-    const state = await gmailAuth.state();
-    return state.kind === 'signed-in' ? state.email : null;
-  },
+  gmailEmail,
 });
+
+async function gmailEmail(): Promise<string | null> {
+  const state = await gmailAuth.state();
+  return state.kind === 'signed-in' ? state.email : null;
+}
 
 let modelsError: string | null = null;
 
@@ -159,7 +168,7 @@ async function handle(request: Request, sender: chrome.runtime.MessageSender): P
       await gmailAuth.setClientId(String(request.clientId ?? ''));
       return { ok: true, data: null };
     case 'gmail/connect':
-      await gmailAuth.connect();
+      await gmailAuth.connect({ calendar: request.calendar === true });
       return { ok: true, data: null };
     case 'gmail/signout':
       await gmailAuth.signOut();
@@ -192,8 +201,10 @@ chrome.runtime.onConnect.addListener((port) => {
   let pinger: ReturnType<typeof setInterval> | null = null;
   // What this panel was shown, so a Confirm can only ever change conversations the user reviewed.
   const proposals = new ProposalBook();
+  const events = new EventBook();
   const post = (message: ChatServerMessage) => {
     if (message.type === 'proposal') proposals.add(message.proposal);
+    if (message.type === 'event-proposal') events.add(message.event);
     try {
       port.postMessage(message);
     } catch {
@@ -212,6 +223,10 @@ chrome.runtime.onConnect.addListener((port) => {
     }
     if (message?.type === 'apply' || message?.type === 'undo') {
       void organize(message, proposals, post);
+      return;
+    }
+    if (message?.type === 'event/add' || message?.type === 'event/undo') {
+      void calendarEvent(message, events, post);
       return;
     }
     if (message?.type !== 'ask' || typeof message.question !== 'string' || !Array.isArray(message.history)) return;
@@ -246,6 +261,34 @@ async function organize(message: Extract<ChatClientMessage, { type: 'apply' | 'u
     post({ type: 'applied', proposalId: message.proposalId, ...result, message: `${describeDone(action, result.done, entry.proposal.label)}${failed}`, undone: undoing });
   } catch (error) {
     post({ type: 'applied', proposalId: message.proposalId, done: 0, failed: entry.threadIds.length, message: error instanceof Error ? error.message : String(error), undone: undoing });
+  }
+}
+
+/** Adds a proposed event the user clicked Add on, or removes it again on Undo. */
+async function calendarEvent(message: Extract<ChatClientMessage, { type: 'event/add' | 'event/undo' }>, events: EventBook, post: (m: ChatServerMessage) => void): Promise<void> {
+  const signal = new AbortController().signal;
+  const id = message.proposalId;
+  if (message.type === 'event/undo') {
+    const eventId = events.undo(id);
+    if (!eventId) return post({ type: 'event-result', proposalId: id, ok: false, undone: true, message: 'Nothing to undo.' });
+    try {
+      await calendar.remove(eventId, signal);
+      post({ type: 'event-result', proposalId: id, ok: true, undone: true, message: 'Removed it from your calendar.' });
+    } catch (error) {
+      post({ type: 'event-result', proposalId: id, ok: false, undone: true, message: error instanceof Error ? error.message : String(error) });
+    }
+    return;
+  }
+  const event = events.take(id);
+  if (!event) return post({ type: 'event-result', proposalId: id, ok: false, undone: false, message: 'That event was already handled.' });
+  try {
+    const email = await gmailEmail();
+    const created = await calendar.insert(eventResource(event, event.source ? gmailThreadUrl(email, event.source.threadId) : null), signal);
+    events.added(id, created.id);
+    post({ type: 'event-result', proposalId: id, ok: true, undone: false, message: 'Added to your calendar.', ...(created.link ? { link: created.link } : {}) });
+  } catch (error) {
+    events.added(id, null);
+    post({ type: 'event-result', proposalId: id, ok: false, undone: false, message: error instanceof Error ? error.message : String(error) });
   }
 }
 

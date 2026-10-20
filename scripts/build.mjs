@@ -84,6 +84,7 @@ async function main() {
     chatgptBase: 'https://chatgpt.com/backend-api/codex',
     googleAuthBase: 'https://accounts.google.com',
     gmailBase: 'https://gmail.googleapis.com',
+    calendarBase: 'https://www.googleapis.com/calendar/v3',
     clientVersion: CODEX_CLIENT_VERSION,
     version: pkg.version,
     googleClientId: config.googleClientId,

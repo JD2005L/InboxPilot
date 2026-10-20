@@ -13,7 +13,7 @@ export const SITE = 'https://levac.net/inbox-pilot/';
 
 export const SCREENSHOTS = ['1-ask-from-search.png', '2-attachments.png', '3-organize.png', '4-draft-reply.png', '5-setup.png'];
 
-const DESCRIPTION = `Inbox Pilot puts ChatGPT at the controls of your Gmail. Type a question into Gmail's search bar and press Enter: ChatGPT searches your mailbox, reads what it needs (attachments included), answers with links to the exact emails, drafts replies, and tidies your inbox when you ask. It runs on your own ChatGPT plan, not on an API key, and it is not Gmail's built-in "Ask Gmail".
+const DESCRIPTION = `Inbox Pilot puts ChatGPT at the controls of your Gmail. Type a question into Gmail's search bar and press Enter: ChatGPT searches your mailbox, reads what it needs (attachments included), answers with links to the exact emails, drafts replies, tidies your inbox, and puts what matters on your calendar when you ask. It runs on your own ChatGPT plan, not on an API key, and it is not Gmail's built-in "Ask Gmail".
 
 WHAT YOU CAN ASK
 • "When does my flight to Calgary leave, and what's the confirmation number?"
@@ -22,6 +22,7 @@ WHAT YOU CAN ASK
 • "Draft a reply saying Thursday works" (saves a draft and opens it; never sends)
 • "Archive the promotions older than two weeks" (shows you the list first; you confirm, and can undo)
 • "Show me everything from the school this month" (runs the search in Gmail for you)
+• "Put my flights for the Toronto trip in my calendar" (shows each event first; nothing is added until you click Add)
 
 HOW IT FITS INTO GMAIL
 • Gmail's search bar keeps working exactly as before. Ordinary searches like from:bob invoice still search; questions go to ChatGPT. A small chip in the bar always shows which it will be, and one click flips it.
@@ -33,9 +34,10 @@ WHAT IT CAN DO
 • Read: whole conversations, and the documents attached to them, so answers can come from the invoice itself and not just the email around it.
 • Draft: replies threaded into the conversation, or new emails. Drafts only: Inbox Pilot has no way to send.
 • Organize: ask it to tidy up and it proposes the change, showing you exactly which conversations it would touch. Nothing happens until you confirm, and Undo puts everything back. Anything moved to Trash stays recoverable for 30 days.
+• Calendar (optional): it turns bookings and appointments in your email into events, with the right times even when a flight crosses time zones, and checks your schedule for clashes. You approve each event before it is added; nobody is invited.
 
 PRIVATE BY DESIGN
-• No Inbox Pilot server. It talks only to Google (Gmail) and OpenAI (your ChatGPT account). The developer never sees your mail, questions or tokens.
+• No Inbox Pilot server. It talks only to Google (Gmail, and Calendar if you connect it) and OpenAI (your ChatGPT account). The developer never sees your mail, questions or tokens.
 • Gmail access goes through a Google app you create and own (the guided setup walks you through it), not a shared app.
 • Email content is treated as data: ChatGPT is instructed never to follow instructions written inside an email.
 • Conversations exist only in the Gmail tab you asked in.
@@ -55,7 +57,8 @@ const TEST_INSTRUCTIONS = `Inbox Pilot needs two accounts that only the reviewer
 3. Create the Google app (about 5 minutes, free, no billing): the page walks through five parts with direct links: create a Google Cloud project, enable the Gmail API, set up Google Auth Platform (External), add the reviewer's Gmail address as a test user, and create an OAuth client of type "Web application" with the redirect URI the page shows. Paste the Client ID.
 4. Connect Gmail: click "Connect Gmail", choose the account, click Continue on "Google hasn't verified this app" (it is the reviewer's own app), tick both Gmail boxes, and continue.
 5. Open Gmail (reload any open Gmail tab). Type a question into the search bar, such as "what was the most recent email about?", and press Enter. The answer appears under the search bar with numbered sources.
-6. Try: "summarize this email" with an email open; "draft a reply saying thanks" (a draft opens; nothing is sent); "archive emails older than a year from noreply senders" (a list appears with Confirm and Cancel; nothing changes until Confirm, and Undo reverses it).`;
+6. Try: "summarize this email" with an email open; "draft a reply saying thanks" (a draft opens; nothing is sent); "archive emails older than a year from noreply senders" (a list appears with Confirm and Cancel; nothing changes until Confirm, and Undo reverses it).
+7. Optional, Calendar: in the same Google Cloud project, enable the Google Calendar API (Settings, Connections, Google Calendar shows the link), then click "Connect Calendar" and tick the calendar box. In Gmail, open an email that mentions a date and ask "add this to my calendar": an event card appears with "Add to calendar" and Cancel; nothing is added until Add, and Undo removes it.`;
 
 export function storeListing(version) {
   return [
@@ -114,7 +117,7 @@ export function storeListing(version) {
           kind: 'text',
           limit: 1000,
           value:
-            "chrome.identity.launchWebAuthFlow signs the user in to Google with the OAuth client they created in their own Google Cloud project, to get a Gmail API access token (read, and modify for drafts and organizing), and silently renews that token while they stay signed in. getRedirectURL provides the redirect URI the setup guide asks the user to register on that client. chrome.identity.getAuthToken is not used, because the client ID is the user's own and cannot be in the manifest.",
+            "chrome.identity.launchWebAuthFlow signs the user in to Google with the OAuth client they created in their own Google Cloud project, to get a Gmail API access token (read, and modify for drafts and organizing; plus Google Calendar events if the user chooses to connect Calendar), and silently renews that token while they stay signed in. getRedirectURL provides the redirect URI the setup guide asks the user to register on that client. chrome.identity.getAuthToken is not used, because the client ID is the user's own and cannot be in the manifest.",
         },
         {
           label: 'offscreen justification',

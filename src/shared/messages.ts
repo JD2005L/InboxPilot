@@ -1,4 +1,5 @@
 import type { ChatgptState, ConversationItem, EmailRef, GmailState, ModelOption, Preferences } from './types';
+import type { EventTimes } from './when';
 
 /** The Options page tabs; the chat panel can open one directly. */
 export const OPTIONS_TABS = ['setup', 'assistant', 'privacy'] as const;
@@ -41,7 +42,8 @@ export type PrivilegedRequest =
   | { type: 'chatgpt/signout' }
   | { type: 'models/refresh' }
   | { type: 'google/set-client-id'; clientId: string }
-  | { type: 'gmail/connect' }
+  /** calendar: also ask for Google Calendar access. */
+  | { type: 'gmail/connect'; calendar?: boolean }
   | { type: 'gmail/signout' }
   | { type: 'prefs/set'; prefs: Partial<Preferences> };
 
@@ -88,7 +90,10 @@ export type ChatClientMessage =
   | { type: 'stop' }
   /** The user confirmed a proposal, for these of its conversations (they may have unticked some). */
   | { type: 'apply'; proposalId: string; threadIds: string[] }
-  | { type: 'undo'; proposalId: string };
+  | { type: 'undo'; proposalId: string }
+  /** The user clicked Add on a proposed calendar event, or Undo after adding it. */
+  | { type: 'event/add'; proposalId: string }
+  | { type: 'event/undo'; proposalId: string };
 
 export interface OpenEmail {
   threadId: string;
@@ -117,18 +122,34 @@ export interface Proposal {
   items: ProposalItem[];
 }
 
+/** A calendar event the assistant proposes. Added to the user's primary calendar only when they click Add. */
+export interface EventProposal extends EventTimes {
+  id: string;
+  title: string;
+  location?: string;
+  description?: string;
+  /** The email it came from, linked from the event. */
+  source?: { threadId: string; subject: string };
+  /** One line from the assistant: why. */
+  summary: string;
+}
+
 /** Why the assistant cannot answer, so the panel can offer the one button that fixes it. */
 export type ChatFix = 'chatgpt' | 'gmail' | 'settings';
 
 export type ChatServerMessage =
   /** A step the assistant is taking, e.g. a Gmail search it is running. */
-  | { type: 'step'; kind: 'search' | 'read' | 'attachment' | 'draft' | 'think'; label: string }
+  | { type: 'step'; kind: 'search' | 'read' | 'attachment' | 'draft' | 'calendar' | 'think'; label: string }
   /** The assistant shows something in Gmail itself: opens a thread or a new draft, or runs a search in Gmail's list. */
   | { type: 'navigate'; target: 'thread' | 'search' | 'draft'; value: string; label: string }
   /** Changes the assistant proposes; nothing happens until the user confirms in the panel. */
   | { type: 'proposal'; proposal: Proposal }
   /** The outcome of a confirmed proposal or of its undo. */
   | { type: 'applied'; proposalId: string; done: number; failed: number; message: string; undone: boolean }
+  /** A calendar event to confirm; nothing is added until the user clicks Add. */
+  | { type: 'event-proposal'; event: EventProposal }
+  /** The outcome of Add or Undo on a proposed event. link: the event in Google Calendar. */
+  | { type: 'event-result'; proposalId: string; ok: boolean; undone: boolean; message: string; link?: string }
   | { type: 'delta'; text: string }
   | { type: 'email'; email: EmailRef }
   | { type: 'done'; items: ConversationItem[]; text: string }

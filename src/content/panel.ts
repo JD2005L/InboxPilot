@@ -1,7 +1,8 @@
 import { formatDate, h, icon } from '../shared/dom';
 import { renderMarkdown } from '../shared/markdown';
-import type { ChatFix, ChatServerMessage, OpenEmail, OptionsTab, PanelStatus, Proposal } from '../shared/messages';
+import type { ChatFix, ChatServerMessage, EventProposal, OpenEmail, OptionsTab, PanelStatus, Proposal } from '../shared/messages';
 import type { ConversationItem, EmailRef } from '../shared/types';
+import { describeWhen } from '../shared/when';
 import { PANEL_CSS } from './styles';
 
 /**
@@ -31,8 +32,17 @@ export interface PanelDeps {
 }
 
 interface Step {
-  kind: 'search' | 'read' | 'attachment' | 'draft' | 'open' | 'show';
+  kind: 'search' | 'read' | 'attachment' | 'draft' | 'calendar' | 'open' | 'show';
   label: string;
+}
+
+/** A proposed calendar event and where the user is with it. */
+interface EventState {
+  event: EventProposal;
+  phase: 'pending' | 'adding' | 'added' | 'cancelled' | 'undoing' | 'undone';
+  result: string | null;
+  /** The event in Google Calendar, once added. */
+  link: string | null;
 }
 
 /** A proposed change and where the user is with it. */
@@ -51,6 +61,7 @@ interface Turn {
   text: string;
   emails: Map<string, EmailRef>;
   proposals: ProposalState[];
+  events: EventState[];
   error: { message: string; fix?: ChatFix } | null;
   done: boolean;
   el: HTMLElement;
@@ -262,7 +273,7 @@ export class ChatPanel {
           return b;
         }),
       ),
-      h('p', { className: 'disclaimer' }, 'Read-only. Answers can be wrong, so check the numbered source emails.'),
+      h('p', { className: 'disclaimer' }, 'Changes wait for your confirmation. Answers can be wrong, so check the numbered source emails.'),
     );
   }
 
@@ -280,7 +291,7 @@ export class ChatPanel {
     if (!question || this.active || !this.ready()) return;
     this.textarea.value = '';
     this.autosize();
-    const turn: Turn = { question, steps: [], thinking: 'Thinking', text: '', emails: new Map(), proposals: [], error: null, done: false, el: h('article', { className: 'turn' }) };
+    const turn: Turn = { question, steps: [], thinking: 'Thinking', text: '', emails: new Map(), proposals: [], events: [], error: null, done: false, el: h('article', { className: 'turn' }) };
     this.turns.push(turn);
     this.active = turn;
     this.renderTurn(turn);
@@ -335,6 +346,10 @@ export class ChatPanel {
       this.applied(message);
       return;
     }
+    if (message.type === 'event-result') {
+      this.eventResult(message);
+      return;
+    }
     const turn = this.active;
     if (!turn || message.type === 'ping') return;
     switch (message.type) {
@@ -356,6 +371,9 @@ export class ChatPanel {
         break;
       case 'proposal':
         turn.proposals.push({ proposal: message.proposal, selected: new Set(message.proposal.items.map((i) => i.threadId)), phase: 'pending', result: null });
+        break;
+      case 'event-proposal':
+        turn.events.push({ event: message.event, phase: 'pending', result: null, link: null });
         break;
       case 'delta':
         turn.thinking = null;
@@ -432,6 +450,7 @@ export class ChatPanel {
     }
     if (turn.done && numbers.size) children.push(this.sources(turn, numbers));
     if (turn.done) for (const state of turn.proposals) children.push(this.proposalCard(turn, state));
+    if (turn.done) for (const state of turn.events) children.push(this.eventCard(turn, state));
     if (turn.error) children.push(this.errorBox(turn.error));
     turn.el.replaceChildren(...children.filter((c): c is Node => !!c));
   }
@@ -550,6 +569,95 @@ export class ChatPanel {
     }
   }
 
+  /** A proposed calendar event: what, when, where, from which email, and Add / Cancel; once added, a link and Undo. */
+  private eventCard(turn: Turn, state: EventState): HTMLElement {
+    const { event } = state;
+    const card = h('section', { className: `proposal event is-${state.phase}`, 'aria-label': `Calendar event: ${event.title}` });
+    card.append(h('div', { className: 'proposal-head' }, h('strong', {}, state.phase === 'added' ? 'Added to your calendar' : 'Add to your calendar?'), event.summary ? h('span', { className: 'muted' }, event.summary) : null));
+    const details = h(
+      'div',
+      { className: 'event-body' },
+      h('span', { className: 'event-icon', 'aria-hidden': 'true' }, icon('calendar')),
+      h(
+        'div',
+        { className: 'event-text' },
+        h('span', { className: 'subject' }, event.title),
+        h('span', {}, describeWhen(event, Intl.DateTimeFormat().resolvedOptions().timeZone)),
+        event.location ? h('span', { className: 'from' }, event.location) : null,
+        event.description ? h('span', { className: 'event-notes' }, event.description) : null,
+      ),
+    );
+    card.append(details);
+    if (event.source) {
+      const threadId = event.source.threadId;
+      const from = h('button', { type: 'button', className: 'text-button event-source', title: 'Open in Gmail' }, icon('mail'), event.source.subject);
+      from.addEventListener('click', () => this.deps.openThread(threadId));
+      card.append(from);
+    }
+    const actions = h('div', { className: 'proposal-actions' });
+    if (state.phase === 'pending') {
+      const add = h('button', { type: 'button', className: 'button' }, 'Add to calendar');
+      add.addEventListener('click', () => this.sendEvent(turn, state, 'event/add'));
+      const cancel = h('button', { type: 'button', className: 'text-button' }, 'Cancel');
+      cancel.addEventListener('click', () => {
+        state.phase = 'cancelled';
+        state.result = 'Cancelled. Nothing was added.';
+        this.renderTurn(turn);
+      });
+      actions.append(add, cancel);
+    } else if (state.phase === 'adding' || state.phase === 'undoing') {
+      actions.append(h('span', { className: 'spinner', 'aria-hidden': 'true' }), h('span', { className: 'muted' }, state.phase === 'adding' ? 'Adding…' : 'Removing…'));
+    } else {
+      actions.append(h('span', { className: 'result' }, state.result ?? ''));
+      if (state.phase === 'added') {
+        const link = state.link;
+        if (link) {
+          const open = h('button', { type: 'button', className: 'text-button' }, 'Open in Calendar', icon('external'));
+          open.addEventListener('click', () => window.open(link, '_blank', 'noopener'));
+          actions.append(open);
+        }
+        const undo = h('button', { type: 'button', className: 'text-button' }, 'Undo');
+        undo.addEventListener('click', () => this.sendEvent(turn, state, 'event/undo'));
+        actions.append(undo);
+      }
+    }
+    card.append(actions);
+    return card;
+  }
+
+  private sendEvent(turn: Turn, state: EventState, type: 'event/add' | 'event/undo'): void {
+    let port: chrome.runtime.Port;
+    try {
+      port = this.ensurePort();
+    } catch {
+      state.result = 'Inbox Pilot was updated or reloaded. Reload this Gmail tab and ask again.';
+      state.phase = 'cancelled';
+      this.renderTurn(turn);
+      return;
+    }
+    state.phase = type === 'event/add' ? 'adding' : 'undoing';
+    this.renderTurn(turn);
+    port.postMessage({ type, proposalId: state.event.id });
+  }
+
+  /** The outcome of Add or Undo; also noted in the conversation so follow-ups know what happened. */
+  private eventResult(message: Extract<ChatServerMessage, { type: 'event-result' }>): void {
+    for (const turn of this.turns) {
+      const state = turn.events.find((e) => e.event.id === message.proposalId);
+      if (!state) continue;
+      if (message.undone) state.phase = message.ok ? 'undone' : 'added';
+      // A failed Add can be tried again.
+      else state.phase = message.ok ? 'added' : 'pending';
+      state.result = message.message;
+      if (message.link) state.link = message.link;
+      if (message.ok) this.history.push({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: `(Calendar: "${state.event.title}". ${message.message})` }] });
+      if (!message.ok) turn.error = { message: message.message };
+      else turn.error = null;
+      this.renderTurn(turn);
+      return;
+    }
+  }
+
   private errorBox(error: { message: string; fix?: ChatFix }): HTMLElement {
     const box = h('div', { className: 'error', role: 'alert' }, error.message);
     if (error.fix) {
@@ -640,12 +748,14 @@ function trailSummary(steps: Step[]): string {
   const reads = count('read');
   const attachments = count('attachment');
   const drafts = count('draft');
+  const calendars = count('calendar');
   const opened = count('open') + count('show');
   return [
     searches ? `Searched ${searches} time${searches === 1 ? '' : 's'}` : '',
     reads ? `read ${reads} email${reads === 1 ? '' : 's'}` : '',
     attachments ? `read ${attachments} attachment${attachments === 1 ? '' : 's'}` : '',
     drafts ? `saved ${drafts === 1 ? 'a draft' : `${drafts} drafts`}` : '',
+    calendars ? 'checked your calendar' : '',
     opened ? 'opened in Gmail' : '',
   ]
     .filter(Boolean)
@@ -665,6 +775,8 @@ function stepWords(step: Step, now: boolean): (Node | string)[] {
       return [now ? 'Reading attachment ' : 'Read attachment ', q(step.label)];
     case 'draft':
       return [now ? 'Writing draft “' : 'Saved draft “', step.label, '”'];
+    case 'calendar':
+      return [now ? 'Checking your calendar for ' : 'Checked your calendar for ', step.label];
     case 'open':
       return ['Opened “', step.label, '” in Gmail'];
     case 'show':
