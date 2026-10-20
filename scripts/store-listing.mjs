@@ -30,9 +30,9 @@ HOW IT FITS INTO GMAIL
 
 WHAT IT CAN DO
 • Find: plain-English questions turned into precise Gmail searches, retried and broadened until it finds the answer.
-• Read: whole threads and attachments (PDF, Word, Excel, PowerPoint, text, CSV).
+• Read: whole conversations, and the documents attached to them, so answers can come from the invoice itself and not just the email around it.
 • Draft: replies threaded into the conversation, or new emails. Drafts only: Inbox Pilot has no way to send.
-• Organize: archive, mark read or unread, star, label, move to inbox, or move to Trash (recoverable for 30 days), always after you review and confirm the list, with Undo. Unsubscribe links to each sender's own page.
+• Organize: ask it to tidy up and it proposes the change, showing you exactly which conversations it would touch. Nothing happens until you confirm, and Undo puts everything back. Anything moved to Trash stays recoverable for 30 days.
 
 PRIVATE BY DESIGN
 • No Inbox Pilot server. It talks only to Google (Gmail) and OpenAI (your ChatGPT account). The developer never sees your mail, questions or tokens.
@@ -41,7 +41,7 @@ PRIVATE BY DESIGN
 • Conversations exist only in the Gmail tab you asked in.
 
 REQUIREMENTS
-• A ChatGPT plan that includes Codex (Plus, Pro, Business, Enterprise or Edu). Usage counts toward that plan's Codex limits.
+• A paid ChatGPT plan that includes Codex. Usage counts toward that plan's Codex limits.
 • About ten minutes of one-time setup: connect ChatGPT with a short code, and create your own free Google Cloud app for Gmail access. The settings page checks every step for you.
 
 Inbox Pilot is an independent extension. It is not made or endorsed by Google or OpenAI. Gmail is a trademark of Google LLC; ChatGPT is a trademark of OpenAI.
