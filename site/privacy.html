@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy policy: Inbox Pilot</title>
+  <meta name="description" content="Privacy policy for the Inbox Pilot Chrome extension.">
+  <link rel="icon" type="image/png" href="icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>main section { margin-bottom: 40px; } main h2 { font-size: 22px; } table td, table th { font-size: 14.5px; }</style>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="./"><img src="icon.png" alt="">Inbox Pilot</a>
+    <nav aria-label="Site">
+      <a href="./#features">Features</a>
+      <a href="./#faq">FAQ</a>
+      <a href="teams.html">For teams</a>
+      <a href="privacy.html" aria-current="page">Privacy</a>
+      <a class="gh" href="https://github.com/JD2005L/InboxPilot">Source</a>
+    </nav>
+  </header>
+
+  <main>
+    <p class="label">// Privacy policy</p>
+    <h1>Privacy policy: Inbox Pilot</h1>
+    <p><em>Last updated: 2026-10-19</em></p>
+    <p class="lead">Inbox Pilot is a Chrome extension that lets you ask ChatGPT about your Gmail from Gmail's search bar, and have it find, read, draft and organize your mail, and add events to your Google Calendar, when you ask. It runs on your own ChatGPT account and reads Gmail (and, if you connect it, Google Calendar) through a Google app that you create and own. This policy explains what it handles and where that data goes.</p>
+    <p class="lead"><strong>In short:</strong> Inbox Pilot has no server. The developer never receives, stores or sees your email, your questions, the answers, or any sign-in token. The extension talks only to Google (your Gmail and Calendar) and OpenAI (your ChatGPT account). Its source code is public, so this can be checked.</p>
+
+    <section>
+      <h2>What the extension accesses</h2>
+      <table>
+        <thead><tr><th>Data</th><th>Where it comes from</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Email messages, threads and attachments</td><td>The Gmail API, through your own Google app, <strong>only when you ask a question</strong></td><td>To find and read what answers your question.</td></tr>
+          <tr><td>Calendar events on your primary calendar, for the days asked about (title, time, location)</td><td>The Google Calendar API, only if you connect Calendar, and only when a question needs your schedule</td><td>To answer what is on your calendar, whether you are free, or whether something clashes.</td></tr>
+          <tr><td>Your Gmail address</td><td>The Gmail API, after you connect</td><td>To show which account is connected, to address drafts, and to open emails in the right account.</td></tr>
+          <tr><td>Your ChatGPT account email and plan</td><td>OpenAI's sign-in, after you connect</td><td>To show which ChatGPT account is connected.</td></tr>
+          <tr><td>Google and ChatGPT sign-in tokens</td><td>The sign-ins you start on the settings page</td><td>To use Gmail and ChatGPT on your behalf.</td></tr>
+          <tr><td>The question you type in Gmail's search bar or the answer panel</td><td>You</td><td>To answer it.</td></tr>
+          <tr><td>The open email's ID and subject, and the Gmail page title</td><td>The Gmail page</td><td>So "this email" means the one you have open, and to tell which account a tab is showing. Not stored.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>What it can change in your Gmail</h2>
+      <p>Only when you ask, and only with the "manage your email" access you can grant (or leave unticked) when you connect Gmail:</p>
+      <ul>
+        <li><p><strong>Drafts:</strong> it saves draft emails and opens them for you to review. It has no way to send email.</p></li>
+        <li><p><strong>Organizing:</strong> archive, mark read or unread, star, add or remove labels, move to the inbox, or move to Trash (recoverable for 30 days). It always shows you the list of conversations first and changes nothing until you press Confirm; Undo reverses it. It cannot delete anything permanently.</p></li>
+        <li><p><strong>Unsubscribe:</strong> it only shows each sender's own unsubscribe link for you to open.</p></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>What it can change in your Google Calendar</h2>
+      <p>Only if you connect Calendar (optional, a separate permission), and only events you approve: when you ask, it shows a proposed event (title, time, place, and the email it came from) and adds it to your primary calendar only when you click Add. Undo removes it again. It never invites anyone, and it does not change or delete events already on your calendar.</p>
+    </section>
+
+    <section>
+      <h2>Where data is sent</h2>
+      <table>
+        <thead><tr><th>Data</th><th>Sent to</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Gmail searches, and the messages and attachments needed to answer</td><td>Google (Gmail API), then OpenAI</td><td>To find what answers your question, and for ChatGPT to write the answer.</td></tr>
+          <tr><td>Your question and the conversation so far</td><td>OpenAI (your ChatGPT account)</td><td>To answer it. Requests are sent with storage off (<code>store: false</code>); OpenAI's handling is governed by your ChatGPT account's terms and data controls.</td></tr>
+          <tr><td>Drafts and confirmed organizing changes</td><td>Google (Gmail API)</td><td>To save the draft or apply the change you confirmed.</td></tr>
+          <tr><td>Calendar events you asked about</td><td>Google (Calendar API), then OpenAI</td><td>For ChatGPT to answer questions about your schedule.</td></tr>
+          <tr><td>Events you clicked Add on</td><td>Google (Calendar API)</td><td>To add them to your calendar.</td></tr>
+          <tr><td>Sign-in requests</td><td>Google (<code>accounts.google.com</code>), OpenAI (<code>auth.openai.com</code>)</td><td>To connect and keep your accounts connected.</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:14px">Nothing is sent anywhere else: there is no backend server, no analytics, tracking or advertising, and nothing is sent to the extension's developer. Attachments are downloaded and turned into text inside your browser; only that text goes to your ChatGPT account, and only when an answer needs it. Data is never sold or used for advertising, credit or any purpose unrelated to the extension's single purpose.</p>
+    </section>
+
+    <section>
+      <h2>Where data is stored</h2>
+      <ul>
+        <li><p><strong>This browser only</strong> (extension storage closed to web pages and to the script that runs in Gmail): your ChatGPT and Google sign-in tokens, the connected Gmail address, and the list of models your ChatGPT plan offers.</p></li>
+        <li><p><strong>Chrome Sync</strong> (only if you use it): your Google OAuth client ID (a public identifier, not a secret) and your assistant preferences (model, answer effort, results per search, search-bar behaviour, panel size). Chrome Sync is operated by Google under Google's privacy policy.</p></li>
+        <li><p><strong>Conversations</strong> exist only in the memory of the Gmail tab where you asked. Closing or reloading the tab erases them. No email content is stored by the extension.</p></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>How email content is treated</h2>
+      <p>Email text and attachments are written by other people, so Inbox Pilot treats them only as data: ChatGPT is instructed never to follow instructions that appear inside an email, never to let them choose what it drafts or organizes, and changes to your mailbox always wait for your confirmation.</p>
+    </section>
+
+    <section>
+      <h2>Your control</h2>
+      <ul>
+        <li><p><strong>Disconnect</strong> ChatGPT or Gmail any time on the settings page. Disconnecting Gmail also revokes the Google token, including Calendar access.</p></li>
+        <li><p><strong>Revoke</strong> your Google app's access at <a href="https://myaccount.google.com/connections">myaccount.google.com/connections</a>, and review ChatGPT sessions in ChatGPT's security settings.</p></li>
+        <li><p><strong>Uninstalling</strong> the extension makes Chrome delete everything it stored in your browser.</p></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Use of Google user data</h2>
+      <p>Inbox Pilot's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. Gmail and Calendar data is used only to provide the features you use (answering your questions, saving drafts you ask for, organizing you confirm, and adding events you approve), is transferred only to OpenAI for the answers you request, is not used for advertising, is not sold, and is not read by any person.</p>
+    </section>
+
+    <section>
+      <h2>Changes</h2>
+      <p>Changes to this policy are published on this page, with the date above updated.</p>
+    </section>
+
+    <section>
+      <h2>Contact</h2>
+      <p>Questions about this policy: <a href="mailto:James@Levac.net?subject=Inbox%20Pilot%20privacy">James@Levac.net</a>, or <a href="https://github.com/JD2005L/InboxPilot/issues">GitHub issues</a> for anything that is not private.</p>
+    </section>
+  </main>
+
+  <footer>
+    <p>Inbox Pilot by <a href="https://levac.net/">James Levac</a> · <a href="./">Home</a> · <a href="https://github.com/JD2005L/InboxPilot">Source (GPL-3.0)</a></p>
+    <p>Not affiliated with or endorsed by Google or OpenAI. Gmail is a trademark of Google LLC; ChatGPT is a trademark of OpenAI.</p>
+  </footer>
+</body>
+</html>

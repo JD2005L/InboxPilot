@@ -6,7 +6,7 @@ numbered links to the exact emails, drafts replies, organizes mail, and adds eve
 plan** (no API key) and reads Gmail through a **Google app you own** (no server; nobody else gets access). It is not
 Gmail's built-in "Ask Gmail".
 
-Product page, support and privacy policy: <https://levac.net/inbox-pilot/>.
+Website: <https://jd2005l.github.io/InboxPilot/> · Privacy policy: [PRIVACY.md](PRIVACY.md) · Free and open source ([GPL-3.0](LICENSE)).
 
 ## What it changes in Gmail
 
@@ -129,3 +129,22 @@ OpenAI ships models that need a newer client.
 See [PRIVACY.md](PRIVACY.md) (published at <https://levac.net/inbox-pilot/privacy.html>). Short version: no Inbox
 Pilot server; mail goes from Google to your ChatGPT account only for the answer you asked for; changes to your mailbox
 wait for your confirmation; conversations live only in the Gmail tab.
+
+## Contributing and support
+
+Issues and pull requests are welcome: <https://github.com/JD2005L/InboxPilot/issues>. Run `npm run check` before
+sending a change. Inbox Pilot is free with nothing held back; if it saves you time, you can
+[sponsor its upkeep](https://github.com/sponsors/JD2005L). Teams on Google Workspace can have it
+[set up for them](https://jd2005l.github.io/InboxPilot/teams.html).
+
+## License and name
+
+The code is licensed under the [GNU General Public License v3.0](LICENSE): you may use, study, change and share it,
+and anything you distribute that is based on it must be released under the same license, with its source.
+
+The license covers the code, not the name. "Inbox Pilot" and its paper-plane icon identify the official release by
+James Levac; if you publish a fork (for example on the Chrome Web Store), give it a different name and icon so people
+can tell them apart.
+
+Not affiliated with or endorsed by Google or OpenAI. Gmail is a trademark of Google LLC; ChatGPT is a trademark of
+OpenAI.
