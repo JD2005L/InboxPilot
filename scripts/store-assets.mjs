@@ -1,7 +1,8 @@
 // Collects everything the Chrome Web Store submission needs into one folder:
 //   release/chrome-web-store-<version>/
 //     1-upload-this.zip              the package (built by `node scripts/build.mjs --store`)
-//     SUBMIT.html / SUBMIT.md        every dashboard field under its exact label, ready to paste (Copy buttons in .html)
+//     SUBMIT.html / SUBMIT.md        every dashboard field under its exact label, ready to paste (Copy buttons in .html),
+//                                    each marked with the release it last changed in (store/listing-history.json)
 //     PRIVACY.md                     the privacy policy (also published on levac.net)
 //     images/store-icon-128.png      store icon
 //     images/logo-512.png            the mark at 512 px, for the website and anywhere else
@@ -16,6 +17,7 @@ import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { renderIcon } from './icons.mjs';
+import { imageFiles, lineage, readHistory, record, snapshot, thumbnails, writeHistory } from './listing-history.mjs';
 import { SCREENSHOTS, storeListing } from './store-listing.mjs';
 import { checkLimits, renderHtml, renderMarkdown } from './submit-page.mjs';
 
@@ -36,8 +38,6 @@ copyFileSync(join(root, 'PRIVACY.md'), join(out, 'PRIVACY.md'));
 
 const tabs = storeListing(version);
 checkLimits(tabs);
-writeFileSync(join(out, 'SUBMIT.html'), renderHtml(tabs, version));
-writeFileSync(join(out, 'SUBMIT.md'), renderMarkdown(tabs, version));
 
 // Pages are served from a made-up origin: dist-store/ and store/ files, with the stub loaded before the settings page.
 const ORIGIN = 'https://inboxpilot.store.test';
@@ -111,6 +111,14 @@ b{color:#fff}
   await promo.setViewportSize({ width: 1400, height: 560 });
   await promo.setContent(tile(1400, 560, true));
   await promo.screenshot({ path: join(out, 'images', 'marquee-1400x560.png') });
+
+  // Now that every image exists: record this release's fields and mark each with the release it last changed in.
+  const historyFile = join(root, 'store', 'listing-history.json');
+  const history = record(readHistory(historyFile), version, snapshot(tabs, await thumbnails(browser, out, imageFiles(tabs))));
+  writeHistory(historyFile, history);
+  const changes = lineage(history, version);
+  writeFileSync(join(out, 'SUBMIT.html'), renderHtml(tabs, version, changes));
+  writeFileSync(join(out, 'SUBMIT.md'), renderMarkdown(tabs, version, changes));
 } finally {
   await browser.close();
 }
