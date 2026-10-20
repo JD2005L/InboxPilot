@@ -164,7 +164,7 @@ export function storeListing(version) {
       tab: 'Distribution',
       fields: [
         { label: 'Payments', kind: 'choice', value: 'Free of charge' },
-        { label: 'Visibility', kind: 'choice', value: 'Unlisted', note: 'Recommended first: only people with the link can install. Switch to Public once you are happy with it.' },
+        { label: 'Visibility', kind: 'choice', value: 'Public', note: 'Listed in store search. Unlisted (link-only) is the alternative for a quieter launch.' },
         { label: 'Distribution', kind: 'choice', value: 'All regions' },
       ],
     },
