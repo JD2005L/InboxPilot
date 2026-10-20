@@ -20,6 +20,11 @@ export interface RuntimeConfig {
   version: string;
   /** A personal build's Google OAuth client ID, used until the user saves their own. Empty in store builds. */
   googleClientId: string;
+  /**
+   * The extension's icon as a PNG data URL, for the badge beside Gmail's logo. Inlined rather than listed in
+   * web_accessible_resources, so Gmail's page cannot load the file and use it to tell the extension is installed.
+   */
+  logo: string;
 }
 
 declare const __GMC_CONFIG__: RuntimeConfig;

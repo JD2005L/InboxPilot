@@ -1,5 +1,6 @@
 import { h, icon } from '../shared/dom';
 import { CHAT_PORT, isBroadcast, WELCOME_QUESTION, type OpenEmail, type OptionsTab, type PanelStatus, type Request, type Response } from '../shared/messages';
+import { Brand } from './brand';
 import { ChatPanel } from './panel';
 import { findSearch, SearchBar } from './searchBar';
 import { BUTTON_CSS } from './styles';
@@ -181,5 +182,6 @@ window.addEventListener('hashchange', () => {
 document.addEventListener('visibilitychange', () => void welcome());
 
 searchBar.start();
+new Brand({ open: () => void loadStatus().then(() => panel.open()), dark: gmailIsDark }).start();
 void loadStatus();
 setTimeout(floatingButton, 8000);

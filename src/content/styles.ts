@@ -282,3 +282,24 @@ textarea:focus-visible { outline: none; }
 .icon-more { stroke-width: 2.75; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 `;
+
+/** The "with Inbox Pilot" badge beside Gmail's logo (brand.ts), in Gmail's header type. */
+export const BRAND_CSS = `
+${THEMES}
+:host { display: block; }
+button {
+  display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 6px; margin: 0; border: 0; border-radius: 8px;
+  background: transparent; color: var(--on-variant); font-family: var(--display); white-space: nowrap; cursor: pointer;
+  transition: background-color 120ms ease;
+}
+button:hover { background: var(--hover); }
+button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.words { display: flex; align-items: baseline; gap: 4px; }
+.with { font: 400 13px/1.1 var(--display); }
+.name { font: 500 14px/1.1 var(--display); color: var(--on-surface); }
+.mark { width: 22px; height: 22px; flex: none; border-radius: 6px; }
+svg.mark { color: var(--primary); }
+button.stack .words { flex-direction: column; align-items: flex-start; gap: 0; }
+button.stack .with { font-size: 11px; }
+button.compact .words { display: none; }
+`;

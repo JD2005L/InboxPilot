@@ -13,6 +13,7 @@ export default defineConfig({
       clientVersion: '0.163.0',
       version: '0.0.0-test',
       googleClientId: '',
+      logo: '',
     }),
   },
   test: {

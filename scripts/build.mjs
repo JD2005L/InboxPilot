@@ -95,6 +95,7 @@ async function main() {
     clientVersion: CODEX_CLIENT_VERSION,
     version: pkg.version,
     googleClientId: config.googleClientId,
+    logo: `data:image/png;base64,${renderIcon(64).toString('base64')}`,
   };
 
   rmSync(outdir, { recursive: true, force: true });
