@@ -52,6 +52,10 @@ const ICONS = {
   // A paper plane: Inbox Pilot's mark.
   plane: ['M14.5 1.5L1.5 6.8l5.2 2.1 2.1 5.6z', 'M6.7 8.9l7.8-7.4'],
   more: ['M8 3.25v.01', 'M8 8v.01', 'M8 12.75v.01'],
+  pen: ['M10.5 2.5l3 3-8 8h-3v-3z', 'M9 4l3 3'],
+  sync: ['M13 6.5A5 5 0 0 0 3.6 5', 'M3 2.5V5h2.5', 'M3 9.5A5 5 0 0 0 12.4 11', 'M13 13.5V11h-2.5'],
+  bell: ['M4 11V7a4 4 0 0 1 8 0v4l1.5 1.5h-11z', 'M6.5 14h3'],
+  globe: ['M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13z', 'M1.5 8h13', 'M8 1.5c-2 2-2 11 0 13', 'M8 1.5c2 2 2 11 0 13'],
 } as const;
 
 export type IconName = keyof typeof ICONS;

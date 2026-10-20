@@ -1,6 +1,6 @@
 import { PLACEHOLDER } from '../content/intent';
 import { h, icon } from '../shared/dom';
-import { isBroadcast, OPTIONS_TABS, type Diagnostics, type OptionsTab, type Request, type Response } from '../shared/messages';
+import { isBroadcast, OPTIONS_TABS, type Diagnostics, type GoogleAccess, type OptionsTab, type Request, type Response } from '../shared/messages';
 import { EFFORTS, type ChatgptState, type Effort, type GmailState, type Preferences, type Problem } from '../shared/types';
 import { clientIdProblem } from '../background/gmail/auth';
 import { planLabel } from '../background/chatgpt/jwt';
@@ -26,7 +26,7 @@ const TABS: { id: OptionsTab; label: string }[] = [
   { id: 'setup', label: 'Setup' },
   { id: 'assistant', label: 'Assistant' },
   { id: 'rules', label: 'Rules' },
-  { id: 'privacy', label: 'Privacy & advanced' },
+  { id: 'privacy', label: 'Privacy & permissions' },
 ];
 const TAB_KEY = 'gmc.options.tab';
 let activeTab: OptionsTab | null = tabFromHash();
@@ -82,9 +82,19 @@ async function send<T>(request: Request): Promise<T> {
   return response.data;
 }
 
+/** What Chrome itself has granted beyond the install-time permissions: desktop notifications and webhook sites. */
+let chromeGrants: { notifications: boolean; sites: string[] } = { notifications: false, sites: [] };
+
+async function loadChromeGrants(): Promise<void> {
+  const manifest = chrome.runtime.getManifest() as { host_permissions?: string[]; content_scripts?: { matches?: string[] }[] };
+  const required = new Set([...(manifest.host_permissions ?? []), ...(manifest.content_scripts ?? []).flatMap((c) => c.matches ?? [])]);
+  const all = await chrome.permissions.getAll().catch((): chrome.permissions.Permissions => ({ permissions: [], origins: [] }));
+  chromeGrants = { notifications: !!all.permissions?.includes('notifications'), sites: (all.origins ?? []).filter((o) => !required.has(o)).sort() };
+}
+
 async function reload(): Promise<void> {
   try {
-    diagnostics = await send<Diagnostics>({ type: 'diagnostics/get' });
+    [diagnostics] = await Promise.all([send<Diagnostics>({ type: 'diagnostics/get' }), loadChromeGrants()]);
   } catch (error) {
     message = { text: error instanceof Error ? error.message : String(error), kind: 'bad' };
   }
@@ -547,7 +557,7 @@ function doneStage(d: Diagnostics): (Node | string)[] {
             'div',
             { className: 'fix' },
             h('p', {}, h('strong', {}, 'Answers only, for now.'), ' To let Inbox Pilot draft replies and organize mail when you ask, allow it on Google’s permission screen (tick both Gmail boxes).'),
-            h('div', { className: 'row' }, button('Allow drafts & organizing', () => void act({ type: 'gmail/connect' }, undefined, 'gmail-upgrade-done'), 'primary', 'gmail-upgrade-done')),
+            h('div', { className: 'row' }, button('Allow drafts & organizing', () => void act({ type: 'gmail/connect', modify: true }, undefined, 'gmail-upgrade-done'), 'primary', 'gmail-upgrade-done')),
           ),
         ]
       : []),
@@ -571,6 +581,7 @@ function doneStage(d: Diagnostics): (Node | string)[] {
       'div',
       { className: 'row' },
       link('Open Gmail', GMAIL_URL, 'button primary'),
+      tourButton(''),
       button('Hide this guide', () => {
         wizard.dismissed = true;
         saveWizard();
@@ -580,13 +591,45 @@ function doneStage(d: Diagnostics): (Node | string)[] {
   ];
 }
 
+/** Re-runs the first-run demo: Gmail comes to the front and asks "What can you do?". */
+function tourButton(className: string): HTMLButtonElement {
+  return button('Show me what it can do', () => void act({ type: 'welcome/replay' }, 'Switched to Gmail: Inbox Pilot is asking “What can you do?”.', 'welcome-replay'), className, 'welcome-replay');
+}
+
+function tourCard(d: Diagnostics): HTMLElement {
+  const ready = setupStep(d) === 'done';
+  return h(
+    'section',
+    { className: 'card', 'aria-labelledby': 'tour-title' },
+    h('h2', { id: 'tour-title' }, 'Get to know it'),
+    h('p', { className: 'muted' }, 'Opens Gmail and asks ChatGPT ', ui('What can you do?'), ' for you: a short tour of every feature with an example to try, which also checks that ChatGPT and Gmail are both working.'),
+    h('div', { className: 'row' }, ready ? tourButton('primary') : button('Finish setup first', () => selectTab('setup', true), '')),
+  );
+}
+
+/** One row: what it is, what it allows right now, and the button to change that. */
+function permRow(logo: Parameters<typeof icon>[0], name: string, detail: string, ...actions: (HTMLElement | null)[]): HTMLElement {
+  return h('div', { className: 'conn' }, h('span', { className: 'logo' }, icon(logo)), h('div', { className: 'who' }, h('strong', {}, name), h('span', { className: 'muted' }, detail)), h('div', { className: 'actions' }, ...actions));
+}
+
+/** Google can only take back the whole grant, so turning one part off reconnects with the rest. */
+function dropGoogle(access: GoogleAccess, what: string): HTMLButtonElement {
+  return button('Turn off', () => {
+    if (!confirm(`Turn off ${what}?\n\nGoogle can only take back all of Inbox Pilot’s access at once, so a Google window opens to reconnect with everything else (nothing new to tick). Your other browsers will ask you to reconnect Gmail once.`)) return;
+    void act({ type: 'gmail/drop', access }, `${what[0]!.toUpperCase()}${what.slice(1)} is off.`, `drop-${access}`);
+  }, 'danger', `drop-${access}`);
+}
+
 function connectionsCard(d: Diagnostics): HTMLElement {
   const chatgpt = d.chatgpt;
   const gmail = d.gmail;
+  const signedIn = gmail.kind === 'signed-in' ? gmail : null;
+  const synced = !!signedIn?.canSync && !signedIn.syncProblem;
   return h(
     'section',
     { className: 'card', 'aria-labelledby': 'conn-title' },
-    h('h2', { id: 'conn-title' }, 'Connections'),
+    h('h2', { id: 'conn-title' }, 'Connections & permissions'),
+    h('p', { className: 'muted' }, 'Everything Inbox Pilot has been allowed in this browser. Anything optional can be turned off here, and turned on again later.'),
     h(
       'div',
       { className: 'conn' },
@@ -606,13 +649,10 @@ function connectionsCard(d: Diagnostics): HTMLElement {
       'div',
       { className: 'conn' },
       h('span', { className: 'logo' }, icon('mail')),
-      h('div', { className: 'who' }, h('strong', {}, 'Gmail'), h('span', { className: 'muted' }, gmail.kind === 'signed-in' ? `${gmail.email} · ${gmail.canModify ? 'answers, drafts and organizing' : 'read-only'}` : gmail.kind === 'no-client' ? 'No Google app set up yet' : 'Not connected')),
+      h('div', { className: 'who' }, h('strong', {}, 'Gmail'), h('span', { className: 'muted' }, gmail.kind === 'signed-in' ? `${gmail.email} · reads mail to answer you` : gmail.kind === 'no-client' ? 'No Google app set up yet' : 'Not connected')),
       h(
         'div',
         { className: 'actions' },
-        gmail.kind === 'signed-in' && !gmail.canModify
-          ? button('Allow drafts & organizing', () => void act({ type: 'gmail/connect' }, undefined, 'gmail-upgrade'), 'primary', 'gmail-upgrade')
-          : null,
         gmail.kind === 'signed-in'
           ? button('Switch account', () => void act({ type: 'gmail/connect' }, undefined, 'gmail-switch'), '', 'gmail-switch')
           : null,
@@ -623,9 +663,47 @@ function connectionsCard(d: Diagnostics): HTMLElement {
           : button('Connect', () => selectTab('setup'), 'primary'),
       ),
     ),
-    ...(gmail.kind === 'signed-in' ? calendarRow(d, gmail) : []),
-    h('p', { className: 'muted' }, 'Each browser connects separately. Sign-ins stay in this browser’s extension storage and never leave it except to OpenAI and Google.'),
+    ...(signedIn
+      ? [
+          permRow(
+            'pen',
+            'Drafts & organizing',
+            signedIn.canModify ? 'Allowed · saves drafts and archives, labels, stars or trashes only after you confirm' : 'Off · answers only',
+            signedIn.canModify ? dropGoogle('modify', 'drafts & organizing') : button('Allow', () => void act({ type: 'gmail/connect', modify: true }, undefined, 'gmail-upgrade'), 'primary', 'gmail-upgrade'),
+          ),
+          ...calendarRow(d, signedIn),
+          permRow(
+            'sync',
+            'Rule sync (Google Drive)',
+            synced ? 'Allowed · a hidden Inbox Pilot folder in your Drive; it cannot see your files' : signedIn.canSync ? 'Allowed, but not working yet (see the Rules tab)' : 'Off · rules stay in this browser',
+            signedIn.canSync ? dropGoogle('sync', 'rule sync') : button('Set up', () => selectTab('rules', true), ''),
+          ),
+        ]
+      : []),
+    permRow(
+      'bell',
+      'Desktop notifications (Chrome)',
+      chromeGrants.notifications ? 'Allowed · used only by rules with the “Desktop notification” action' : 'Off · asked for when you save a rule that notifies you',
+      chromeGrants.notifications ? button('Turn off', () => void chrome.permissions.remove({ permissions: ['notifications'] }).then(() => reload()), 'danger', 'drop-notifications') : null,
+    ),
+    ...(chromeGrants.sites.length
+      ? chromeGrants.sites.map((site) =>
+          permRow(
+            'globe',
+            `Webhook site: ${siteName(site)}`,
+            'Allowed (Chrome) · rules can post to it; sending there fails once this is removed',
+            button('Remove', () => void chrome.permissions.remove({ origins: [site] }).then(() => reload()), 'danger', `drop-${site}`),
+          ),
+        )
+      : [permRow('globe', 'Webhook sites (Chrome)', 'None · Chrome asks for each site when you add a webhook destination to Rules')]),
+    h('p', { className: 'muted' }, 'Each browser connects separately. Sign-ins stay in this browser’s extension storage and never leave it except to OpenAI and Google. Chrome lists the same permissions under Details on chrome://extensions.'),
   );
+}
+
+/** "https://ntfy.sh/*" -> "ntfy.sh" (keeps http:// visible, since that is the unusual case). */
+function siteName(pattern: string): string {
+  const m = /^(https?):\/\/([^/]+)/.exec(pattern);
+  return m ? `${m[1] === 'http' ? 'http://' : ''}${m[2]}` : pattern;
 }
 
 /** Optional Google Calendar access, on the same Google sign-in: the API to turn on, then one more permission. */
@@ -640,9 +718,9 @@ function calendarRow(d: Diagnostics, gmail: Extract<GmailState, { kind: 'signed-
         'div',
         { className: 'who' },
         h('strong', {}, 'Google Calendar'),
-        h('span', { className: 'muted' }, gmail.canCalendar && !gmail.calendarProblem ? `${gmail.email} · checks your schedule, adds events you confirm` : 'Optional: add flights, bookings and appointments from your email'),
+        h('span', { className: 'muted' }, gmail.canCalendar && !gmail.calendarProblem ? 'Allowed · checks your schedule, adds only the events you confirm' : 'Optional: add flights, bookings and appointments from your email'),
       ),
-      h('div', { className: 'actions' }, gmail.canCalendar && !gmail.calendarProblem ? null : connect(gmail.calendarProblem ? 'Try again' : 'Connect Calendar')),
+      h('div', { className: 'actions' }, gmail.canCalendar && !gmail.calendarProblem ? null : connect(gmail.calendarProblem ? 'Try again' : 'Connect Calendar'), gmail.canCalendar ? dropGoogle('calendar', 'Calendar access') : null),
     ),
   ];
   if (gmail.calendarProblem) nodes.push(...problemBlock(d, gmail.calendarProblem));
@@ -913,7 +991,7 @@ function paint(): void {
       break;
     }
     case 'assistant':
-      content = [modelCard(d), behaviourCard(d), connectionsCard(d)];
+      content = [tourCard(d), modelCard(d), behaviourCard(d)];
       break;
     case 'rules':
       content = rulesTab({
@@ -932,7 +1010,7 @@ function paint(): void {
       });
       break;
     case 'privacy':
-      content = [privacyCard(), advancedCard(d)];
+      content = [connectionsCard(d), privacyCard(), advancedCard(d)];
       break;
   }
   app.replaceChildren(header, ...cards([status]), tabBar(d, tab), h('div', { className: 'tab-panel', role: 'tabpanel', id: 'panel', 'aria-labelledby': `tab-${tab}` }, ...content));
@@ -957,6 +1035,14 @@ function syncPairing(d: Diagnostics): void {
     void send({ type: 'chatgpt/poll' }).catch(() => undefined);
   }, 2000);
 }
+
+// Granted or removed here, on the Rules tab, or on chrome://extensions: every list stays current.
+const onGrantsChanged = () => {
+  invalidateRules();
+  void reload();
+};
+chrome.permissions.onAdded.addListener(onGrantsChanged);
+chrome.permissions.onRemoved.addListener(onGrantsChanged);
 
 chrome.runtime.onMessage.addListener((msg: unknown) => {
   if (!isBroadcast(msg)) return;

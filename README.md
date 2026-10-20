@@ -90,6 +90,9 @@ Google or OpenAI can show.
 - **Rules can't be hijacked.** ChatGPT only answers a rule's yes/no question; the actions, labels and webhook
   destinations are fixed by you, and a rule proposed in chat can only send to destinations you added yourself.
 - **Conversations are not kept.** They live in the Gmail tab you asked in and disappear when it closes.
+- **Every permission stays visible.** Settings, Privacy & permissions lists everything Inbox Pilot has been allowed
+  (drafts and organizing, Calendar, rule sync, notifications, each webhook site), and each optional one can be turned
+  off there.
 
 The full policy is in [PRIVACY.md](PRIVACY.md) (also published at
 <https://jd2005l.github.io/InboxPilot/privacy.html>).

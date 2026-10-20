@@ -40,10 +40,11 @@ async function loadStatus(): Promise<void> {
 /**
  * Right after setup, the first Gmail tab the user is looking at opens the panel and asks "What can you do?", so the
  * first answer they see is a tour of Inbox Pilot (and proof that everything is connected). A tab in the background
- * waits until it is shown; the background lets only one tab do it, once.
+ * waits until it is shown; the background lets only one tab do it, once. Settings' "Show me what it can do" sets it up
+ * again; if the panel is already open, the question simply joins that conversation.
  */
 async function welcome(): Promise<void> {
-  if (!status?.welcome || document.visibilityState !== 'visible' || panel.isOpen) return;
+  if (!status?.welcome || document.visibilityState !== 'visible') return;
   if (await send<boolean>({ type: 'welcome/claim' })) panel.open(WELCOME_QUESTION);
 }
 

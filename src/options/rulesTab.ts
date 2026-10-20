@@ -374,11 +374,19 @@ function destinationsCard(ctx: RulesContext, v: NonNullable<typeof view>): HTMLE
           return h(
             'li',
             { className: 'rule' },
-            h('div', { className: 'rule-text' }, h('strong', {}, d.name), h('span', { className: 'muted mono' }, `${new URL(d.url).host} · ${d.format}${d.includeBody ? ' · includes email text' : ''}`), allowed ? null : h('span', { className: 'warn-text' }, 'Not allowed in this browser yet: sending from here fails until you allow it.')),
+            h('div', { className: 'rule-text' }, h('strong', {}, d.name), h('span', { className: 'muted mono' }, `${new URL(d.url).host} · ${d.format}${d.includeBody ? ' · includes email text' : ''}`), allowed ? h('span', { className: 'muted small' }, 'Allowed in this browser.') : h('span', { className: 'warn-text' }, 'Not allowed in this browser: sending from here fails until you allow it.')),
             h(
               'div',
               { className: 'actions' },
-              allowed ? null : allow,
+              allowed
+                ? ctx.button('Revoke access', () => {
+                    void chrome.permissions.remove({ origins: [pattern(d.url)] }).then(() => {
+                      ctx.say(`This browser can no longer reach ${new URL(d.url).host}. Rules sending there will fail here until you allow it again.`, 'ok');
+                      view = null;
+                      ctx.render();
+                    });
+                  }, 'small')
+                : allow,
               ctx.button('Remove', () => {
                 const used = v.doc.rules.some((r) => r.actions.some((a) => a.kind === 'webhook' && a.destination === d.id));
                 if (used) return ctx.say(`A rule still sends to “${d.name}”. Change that rule first.`, 'bad');
@@ -462,6 +470,19 @@ function syncCard(ctx: RulesContext, v: NonNullable<typeof view>): HTMLElement {
   card.append(
     h('div', { className: 'row' }, rename, ctx.button('Rename this browser', () => void ctx.act({ type: 'node/rename', name: rename.value }, 'Renamed.', 'node-rename').then(() => invalidateRules()), '', 'node-rename')),
   );
+  if (gmail?.canSync) {
+    card.append(
+      h(
+        'div',
+        { className: 'row' },
+        h('span', { className: 'muted small' }, synced ? 'Sync is on: Inbox Pilot may use its own hidden folder in your Google Drive.' : 'Sync is allowed but not working yet.'),
+        ctx.button('Turn off sync', () => {
+          if (!confirm('Turn off rule sync?\n\nYour rules stay in this browser and keep running here. Google can only take back all of Inbox Pilot’s access at once, so a Google window opens to reconnect with everything else. Your other browsers will ask you to reconnect Gmail once.')) return;
+          void ctx.act({ type: 'gmail/drop', access: 'sync' }, 'Rule sync is off. Rules run in this browser only.', 'sync-drop').then(() => invalidateRules());
+        }, 'danger small', 'sync-drop'),
+      ),
+    );
+  }
   if (gmail && !synced) {
     if (gmail.syncProblem) card.append(...ctx.problemBlock(gmail.syncProblem));
     card.append(

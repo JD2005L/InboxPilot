@@ -62,6 +62,10 @@ export type PublicRequest =
   /** A Gmail tab asks to be the one that introduces Inbox Pilot; true for exactly one tab, once. */
   | { type: 'welcome/claim' };
 
+/** The optional parts of the Google sign-in, each of which can be turned off again. */
+export type GoogleAccess = 'modify' | 'calendar' | 'sync';
+export const GOOGLE_ACCESS: readonly GoogleAccess[] = ['modify', 'calendar', 'sync'];
+
 /** Requests only extension pages (the options page) may send. */
 export type PrivilegedRequest =
   | { type: 'diagnostics/get' }
@@ -72,8 +76,12 @@ export type PrivilegedRequest =
   | { type: 'chatgpt/signout' }
   | { type: 'models/refresh' }
   | { type: 'google/set-client-id'; clientId: string }
-  /** calendar / sync: also ask for Google Calendar access, or for rule sync (Drive app data). */
-  | { type: 'gmail/connect'; calendar?: boolean; sync?: boolean }
+  /** modify / calendar / sync: also ask for drafts and organizing, Google Calendar access, or rule sync (Drive app data). */
+  | { type: 'gmail/connect'; modify?: boolean; calendar?: boolean; sync?: boolean }
+  /** Turns one optional Google access off again, staying connected for the rest. */
+  | { type: 'gmail/drop'; access: GoogleAccess }
+  /** "Show me what it can do": the welcome question again, in a Gmail tab brought to the front (or a new one). */
+  | { type: 'welcome/replay' }
   | { type: 'rules/get' }
   | { type: 'rules/save'; doc: RulesDoc }
   /** Runs a rule over recent mail without doing anything. */
@@ -95,6 +103,8 @@ export const PRIVILEGED_TYPES: ReadonlySet<string> = new Set<PrivilegedRequest['
   'models/refresh',
   'google/set-client-id',
   'gmail/connect',
+  'gmail/drop',
+  'welcome/replay',
   'rules/get',
   'rules/save',
   'rules/test',

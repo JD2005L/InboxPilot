@@ -1,5 +1,5 @@
 import { CONFIG } from '../shared/config';
-import { CHAT_PORT, OPTIONS_TABS, PRIVILEGED_TYPES, type Broadcast, type ChatClientMessage, type ChatServerMessage, type Diagnostics, type PanelStatus, type Request, type Response } from '../shared/messages';
+import { CHAT_PORT, GOOGLE_ACCESS, OPTIONS_TABS, PRIVILEGED_TYPES, type Broadcast, type ChatClientMessage, type ChatServerMessage, type Diagnostics, type PanelStatus, type Request, type Response } from '../shared/messages';
 import { DEFAULT_PREFERENCES, EFFORTS, type ModelOption, type Preferences } from '../shared/types';
 import { CalendarApi } from './calendar/api';
 import { EventBook } from './calendar/book';
@@ -76,7 +76,7 @@ async function gmailEmail(): Promise<string | null> {
   return state.kind === 'signed-in' ? state.email : null;
 }
 
-/** storage.local: set on a fresh install, cleared once a Gmail tab has asked the welcome question. */
+/** storage.local: set on a fresh install (or by "Show me what it can do"), cleared once a Gmail tab has asked the welcome question. */
 const WELCOME_KEY = 'welcome.pending';
 let welcomeClaim: Promise<boolean> = Promise.resolve(false);
 
@@ -272,8 +272,25 @@ async function handle(request: Request, sender: chrome.runtime.MessageSender): P
       await gmailAuth.setClientId(String(request.clientId ?? ''));
       return { ok: true, data: null };
     case 'gmail/connect':
-      await gmailAuth.connect({ calendar: request.calendar === true, sync: request.sync === true });
+      await gmailAuth.connect({ modify: request.modify === true, calendar: request.calendar === true, sync: request.sync === true });
       if (request.sync) void runner.tick();
+      return { ok: true, data: null };
+    case 'welcome/replay': {
+      await chrome.storage.local.set({ [WELCOME_KEY]: true });
+      broadcast();
+      const [tab] = await chrome.tabs.query({ url: ['https://mail.google.com/*'] });
+      if (tab?.id !== undefined) {
+        await chrome.tabs.update(tab.id, { active: true });
+        if (tab.windowId !== undefined) await chrome.windows.update(tab.windowId, { focused: true });
+      } else {
+        await chrome.tabs.create({ url: 'https://mail.google.com/mail/' });
+      }
+      return { ok: true, data: null };
+    }
+    case 'gmail/drop':
+      if (!GOOGLE_ACCESS.includes(request.access)) return { ok: false, error: 'Unknown access.' };
+      await gmailAuth.drop(request.access);
+      void runner.tick();
       return { ok: true, data: null };
     case 'rules/get': {
       const [doc, activity, me] = await Promise.all([runner.rules(), runner.activity().catch(() => []), node()]);

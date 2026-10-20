@@ -144,12 +144,12 @@ export class GmailAuth {
    * Interactive sign-in, from the settings page or the panel's "Reconnect Gmail" button. With `calendar` or `sync`,
    * that access is asked for as well, and checked against its API straight away so a missing step shows here.
    */
-  async connect(opts: { calendar?: boolean; sync?: boolean } = {}): Promise<void> {
+  async connect(opts: { modify?: boolean; calendar?: boolean; sync?: boolean } = {}): Promise<void> {
     this.problem = null;
     if (opts.calendar) this.calendarProblem = null;
     if (opts.sync) this.syncProblem = null;
     try {
-      const token = await this.authorize(true, { calendar: !!opts.calendar, sync: !!opts.sync });
+      const token = await this.authorize(true, { modify: !!opts.modify, calendar: !!opts.calendar, sync: !!opts.sync });
       if (opts.calendar) {
         this.calendarProblem = token.canCalendar
           ? await this.checkApi(token.accessToken, `${this.deps.calendarBase}/calendars/primary/events?maxResults=1`, 'Google Calendar', 'calendar-api-disabled')
@@ -167,6 +167,31 @@ export class GmailAuth {
     this.deps.onChange();
   }
 
+  /**
+   * Gives up one optional access while staying connected. Google cannot take back a single permission, so the whole
+   * grant is revoked and the rest asked for again (one Google window, nothing new to tick). The grant belongs to the
+   * Google account, so the user's other browsers ask them to connect again once.
+   */
+  async drop(access: 'modify' | 'calendar' | 'sync'): Promise<void> {
+    const gone = { modify: MODIFY_SCOPE, calendar: CALENDAR_SCOPE, sync: SYNC_SCOPE }[access];
+    const keep = (await this.grantedScopes()).filter((s) => s !== gone);
+    if (!keep.includes(MODIFY_SCOPE) && !keep.includes(GMAIL_SCOPE)) keep.unshift(GMAIL_SCOPE);
+    const token = await this.stored(true);
+    if (access === 'calendar') this.calendarProblem = null;
+    if (access === 'sync') this.syncProblem = null;
+    if (token) await this.revoke(token.accessToken);
+    await this.deps.local.remove(TOKEN_KEY);
+    await this.deps.local.set({ [SCOPES_KEY]: keep });
+    try {
+      await this.authorize(true, { only: keep });
+      this.problem = null;
+    } catch {
+      this.problem = { message: 'That access was removed at Google. Connect Gmail again to keep using Inbox Pilot.' };
+      await this.deps.local.remove([ACCOUNT_KEY, SCOPES_KEY]);
+    }
+    this.deps.onChange();
+  }
+
   async signOut(): Promise<void> {
     const token = await this.stored(true);
     await this.deps.local.remove([TOKEN_KEY, ACCOUNT_KEY, SCOPES_KEY]);
@@ -174,12 +199,15 @@ export class GmailAuth {
     this.calendarProblem = null;
     this.syncProblem = null;
     this.deps.onChange();
-    if (token) {
-      // Best effort: also end the grant on Google's side.
-      await this.deps
-        .fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token.accessToken)}`, { method: 'POST', credentials: 'omit' })
-        .catch(() => undefined);
-    }
+    // Best effort: also end the grant on Google's side.
+    if (token) await this.revoke(token.accessToken);
+  }
+
+  /** Ends the whole grant on Google's side (every scope, every browser). Best effort: an expired token is a no-op. */
+  private async revoke(accessToken: string): Promise<void> {
+    await this.deps
+      .fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(accessToken)}`, { method: 'POST', credentials: 'omit' })
+      .catch(() => undefined);
   }
 
   /** Whether the current sign-in allows drafts and organizing. */
@@ -219,20 +247,22 @@ export class GmailAuth {
     }
   }
 
-  private async authorize(interactive: boolean, want: { calendar?: boolean; sync?: boolean } = {}): Promise<StoredToken> {
+  private async authorize(interactive: boolean, want: { modify?: boolean; calendar?: boolean; sync?: boolean; only?: string[] } = {}): Promise<StoredToken> {
     const clientId = await this.clientId();
     if (!clientId) throw new GmailAuthError('Add your Google client ID in Inbox Pilot settings first.', 'google-client');
     const state = crypto.randomUUID();
     const hint = await this.account();
-    // Interactive: ask for everything (the user may untick modify), plus Calendar and sync when being connected or
-    // granted before (so switching accounts keeps them). Silent: exactly what was granted before, since prompt=none
-    // fails outright if it would need to show a new permission.
+    // Interactive: reading plus whatever is being connected or was granted before (so switching accounts keeps it);
+    // drafts and organizing on the first connect too (the user may untick it), but not again once turned off.
+    // Silent: exactly what was granted before, since prompt=none fails outright if it would need to show a new
+    // permission. `only`: exactly these, after the user turned one off.
     const granted = await this.grantedScopes();
     const optional = [
+      ...(want.modify || !granted.length || granted.includes(MODIFY_SCOPE) ? [MODIFY_SCOPE] : []),
       ...(want.calendar || granted.includes(CALENDAR_SCOPE) ? [CALENDAR_SCOPE] : []),
       ...(want.sync || granted.includes(SYNC_SCOPE) ? [SYNC_SCOPE] : []),
     ];
-    const scopes = interactive || !granted.length ? [GMAIL_SCOPE, MODIFY_SCOPE, ...optional] : granted;
+    const scopes = want.only ?? (interactive || !granted.length ? [GMAIL_SCOPE, ...optional] : granted);
     const params = new URLSearchParams({
       client_id: clientId,
       response_type: 'token',
