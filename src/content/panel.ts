@@ -30,6 +30,11 @@ export interface PanelDeps {
   openSettings: (tab?: OptionsTab) => void;
   /** Throws when the extension was reloaded under this tab. */
   connect: () => chrome.runtime.Port;
+  /** The extension was reloaded or updated under this tab: only reloading the tab reconnects it. */
+  orphaned: () => boolean;
+  reload: () => void;
+  /** Asks the extension for its state again. */
+  retry: () => Promise<void>;
 }
 
 interface Step {
@@ -242,6 +247,10 @@ export class ChatPanel {
   }
 
   private renderSetup(status: PanelStatus | null): void {
+    if (!status) {
+      this.scroll.replaceChildren(this.unreachable());
+      return;
+    }
     const check = (done: boolean, label: string) => h('li', { className: done ? 'done' : 'todo' }, h('span', { className: 'mark' }, done ? icon('check') : null), label);
     const button = h('button', { type: 'button', className: 'button' }, 'Open setup', icon('external'));
     button.addEventListener('click', () => this.deps.openSettings('setup'));
@@ -249,19 +258,45 @@ export class ChatPanel {
       h(
         'div',
         { className: 'setup' },
-        h('h2', {}, status ? 'Finish setup to start asking' : 'Inbox Pilot is not responding'),
-        h('p', {}, status ? 'Two connections, about five minutes, once. The setup page walks you through every click.' : 'Reload this Gmail tab. If that does not help, open the setup page.'),
-        status
-          ? h(
-              'ul',
-              { className: 'checks' },
-              check(status.chatgpt === 'signed-in', status.chatgpt === 'expired' ? 'Reconnect your ChatGPT account (the sign-in expired)' : 'Connect your ChatGPT account'),
-              check(status.gmail === 'signed-in', status.gmail === 'no-client' ? 'Set up Gmail access (your own Google Cloud app)' : 'Connect Gmail'),
-            )
-          : null,
+        h('h2', {}, 'Finish setup to start asking'),
+        h('p', {}, 'Two connections, about five minutes, once. The setup page walks you through every click.'),
+        h(
+          'ul',
+          { className: 'checks' },
+          check(status.chatgpt === 'signed-in', status.chatgpt === 'expired' ? 'Reconnect your ChatGPT account (the sign-in expired)' : 'Connect your ChatGPT account'),
+          check(status.gmail === 'signed-in', status.gmail === 'no-client' ? 'Set up Gmail access (your own Google Cloud app)' : 'Connect Gmail'),
+        ),
         button,
       ),
     );
+  }
+
+  /**
+   * The extension cannot be reached. After an update or reload, this tab's script is cut off and only a reload
+   * reconnects it; otherwise the background may still be starting, so asking again usually works.
+   */
+  private unreachable(): HTMLElement {
+    if (this.deps.orphaned()) {
+      const reload = h('button', { type: 'button', className: 'button' }, 'Reload Gmail');
+      reload.addEventListener('click', () => this.deps.reload());
+      return h(
+        'div',
+        { className: 'setup' },
+        h('h2', {}, 'Inbox Pilot was updated'),
+        h('p', {}, 'Reload this Gmail tab to reconnect it. Gmail keeps your drafts, so nothing is lost.'),
+        reload,
+      );
+    }
+    const retry = h('button', { type: 'button', className: 'button' }, 'Try again');
+    retry.addEventListener('click', () => {
+      retry.disabled = true;
+      void this.deps.retry().finally(() => {
+        retry.disabled = false;
+      });
+    });
+    const setup = h('button', { type: 'button', className: 'text-button' }, 'Open setup', icon('external'));
+    setup.addEventListener('click', () => this.deps.openSettings('setup'));
+    return h('div', { className: 'setup' }, h('h2', {}, 'Inbox Pilot is not responding'), h('p', {}, 'It may still be starting up. Try again in a moment; if that does not help, reload this Gmail tab.'), h('div', { className: 'row' }, retry, setup));
   }
 
   private renderBody(): void {
