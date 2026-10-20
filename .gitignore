@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+dist/
+dist-store/
+release/
+coverage/
+*.log
+.DS_Store
+# Private signing keys must never be committed.
+*.pem
+.claude/
+# Local build configuration (personal Google client ID). Never commit.
+config/extension.config.json

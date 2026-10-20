@@ -1,0 +1,94 @@
+<!doctype html>
+<!--
+  A stand-in for Gmail, for the Chrome Web Store screenshots only (scripts/store-screenshots.mjs). The real, built
+  content script runs on it; ChatGPT and the Gmail API are replaced by scripted scenes (store/stub.js). Every
+  name, address and email here is made up.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Inbox (4) - alex.rivera@example.com - Gmail</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; font: 14px/1.4 Roboto, "Segoe UI", Arial, sans-serif; color: #1f1f1f; background: #f6f8fc; }
+      header { display: flex; align-items: center; height: 64px; padding: 8px 16px; gap: 8px; }
+      .brand { display: flex; align-items: center; gap: 14px; width: 236px; font: 400 22px "Product Sans", "Google Sans", Arial, sans-serif; color: #444746; }
+      .burger { width: 24px; height: 24px; display: grid; gap: 4px; align-content: center; }
+      .burger i { display: block; height: 2px; background: #444746; }
+      .mailmark { width: 30px; height: 22px; border: 2.5px solid #0b57d0; border-radius: 4px; position: relative; overflow: hidden; }
+      .mailmark::after { content: ""; position: absolute; left: 50%; top: -9px; width: 18px; height: 18px; border: 2.5px solid #0b57d0; transform: translateX(-50%) rotate(45deg); }
+      form[role="search"] { position: relative; display: flex; align-items: center; flex: 0 1 720px; height: 48px; padding: 0 6px; background: #e9eef6; border-radius: 24px; }
+      form[role="search"] input[name="q"] { flex: 1; height: 100%; border: 0; background: none; font: 16px Roboto, Arial, sans-serif; outline: none; padding: 0 10px; color: #1f1f1f; }
+      form[role="search"] input::placeholder { color: #444746; }
+      .gbtn { width: 40px; height: 40px; border: 0; border-radius: 50%; background: none; display: grid; place-items: center; color: #444746; font-size: 20px; }
+      .right { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+      .avatar { width: 32px; height: 32px; border-radius: 50%; background: #8e5bd8; color: #fff; display: grid; place-items: center; font-weight: 500; }
+      .status { padding: 6px 14px; border-radius: 18px; border: 1px solid #c4c7c5; font-size: 13px; color: #1f1f1f; margin-right: 8px; }
+      main { display: flex; height: calc(100vh - 64px); }
+      nav { width: 256px; padding: 4px 12px 0 8px; flex: none; }
+      .compose { display: inline-flex; align-items: center; gap: 12px; height: 56px; padding: 0 22px; margin: 4px 0 12px 0; border-radius: 16px; background: #c2e7ff; font-weight: 500; }
+      nav a { display: flex; justify-content: space-between; height: 32px; padding: 0 12px 0 26px; align-items: center; border-radius: 0 16px 16px 0; color: #1f1f1f; text-decoration: none; }
+      nav a.on { background: #d3e3fd; font-weight: 700; }
+      .list, .thread { flex: 1; margin: 0 16px 16px 0; background: #fff; border-radius: 16px; overflow: hidden; }
+      .toolbar { height: 48px; border-bottom: 1px solid #f1f3f4; }
+      .row { display: grid; grid-template-columns: 200px 1fr 70px; gap: 12px; align-items: center; height: 40px; padding: 0 16px 0 56px; border-bottom: 1px solid #f1f3f4; }
+      .row.unread { font-weight: 700; background: #fff; }
+      .row:not(.unread) { background: #f2f6fc; }
+      .row .snip { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+      .row .snip span { color: #5f6368; font-weight: 400; }
+      .row .date { text-align: right; font-size: 12px; }
+      .thread { padding: 20px 28px; }
+      .thread h2 { font: 400 22px "Google Sans", Arial, sans-serif; margin: 8px 0 18px; }
+      .thread .from { font-weight: 700; } .thread .meta { color: #5f6368; font-size: 12px; margin-bottom: 14px; }
+      .thread p { max-width: 720px; line-height: 1.6; }
+      body.thread-view .list { display: none; } body:not(.thread-view) .thread { display: none; }
+      /* Screenshot only: the open email sits below the answer panel so both show. */
+      body.thread-view .thread { padding-top: 470px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand"><div class="burger"><i></i><i></i><i></i></div><div class="mailmark"></div>Gmail</div>
+      <form role="search" aria-label="Search mail">
+        <button class="gbtn" type="button" aria-label="Search mail">&#9906;</button>
+        <input name="q" aria-label="Search mail" placeholder="Search mail" autocomplete="off" />
+        <button class="gbtn" type="button" aria-label="Advanced search options">&#8801;</button>
+      </form>
+      <div class="right"><span class="status">● Active</span><button class="gbtn" type="button">?</button><button class="gbtn" type="button">⚙</button><div class="avatar">A</div></div>
+    </header>
+    <main>
+      <nav>
+        <div class="compose">✎ Compose</div>
+        <a class="on" href="#">Inbox <b>4</b></a><a href="#">Starred</a><a href="#">Snoozed</a><a href="#">Sent</a><a href="#">Drafts <span>2</span></a><a href="#">Purchases</a><a href="#">Updates</a><a href="#">Promotions <span>38</span></a>
+      </nav>
+      <section class="list">
+        <div class="toolbar"></div>
+        <div class="row unread"><span>WestJet</span><span class="snip">Your itinerary: Vancouver to Calgary, Fri Oct 24 <span>- Confirmation KX7Q2M. Check in 24 hours before departure…</span></span><span class="date">8:12 AM</span></div>
+        <div class="row unread"><span>Northside Plumbing</span><span class="snip">Invoice 2231 for October service <span>- Please find attached your invoice for the water heater repair…</span></span><span class="date">Oct 18</span></div>
+        <div class="row unread"><span>Priya Shah</span><span class="snip">Lunch &amp; learn: pick a time <span>- Would Tuesday or Thursday afternoon work for the team session…</span></span><span class="date">Oct 18</span></div>
+        <div class="row unread"><span>Maple Hydro</span><span class="snip">Your October statement is ready <span>- Amount due $142.18, due November 3…</span></span><span class="date">Oct 17</span></div>
+        <div class="row"><span>Trailhead Outfitters</span><span class="snip">48-hour flash sale: 30% off all jackets <span>- Gear up for the season…</span></span><span class="date">Oct 16</span></div>
+        <div class="row"><span>Cedar Books</span><span class="snip">Your order has shipped <span>- The Overstory and 1 more item are on the way…</span></span><span class="date">Oct 15</span></div>
+        <div class="row"><span>City Rec Centre</span><span class="snip">Fall swim lessons: registration confirmed <span>- Sat 9:30 AM, starting Oct 25…</span></span><span class="date">Oct 14</span></div>
+        <div class="row"><span>Fresh Basket</span><span class="snip">Weekly deals inside 🍎 <span>- Save on produce this week…</span></span><span class="date">Oct 13</span></div>
+        <div class="row"><span>Jordan Lee</span><span class="snip">Re: Cabin weekend <span>- Wifi password is on the fridge, but it's pine-cone-42…</span></span><span class="date">Oct 12</span></div>
+        <div class="row"><span>StreamBox</span><span class="snip">Your subscription renewed <span>- $16.99 charged to card ending 4417…</span></span><span class="date">Oct 10</span></div>
+        <div class="row"><span>Trailhead Outfitters</span><span class="snip">New arrivals for fall <span>- Fresh layers just landed…</span></span><span class="date">Oct 9</span></div>
+        <div class="row"><span>Fresh Basket</span><span class="snip">Your points balance <span>- You have 2,340 points…</span></span><span class="date">Oct 6</span></div>
+        <div class="row"><span>Northside Plumbing</span><span class="snip">Appointment confirmed <span>- Tech arriving between 1 and 3 PM…</span></span><span class="date">Oct 3</span></div>
+        <div class="row"><span>Cedar Books</span><span class="snip">Members save 20% this weekend <span>- Your next great read…</span></span><span class="date">Oct 2</span></div>
+      </section>
+      <section class="thread">
+        <h2 data-legacy-thread-id="18f2a6c0b13de441">Lunch &amp; learn: pick a time</h2>
+        <div class="from">Priya Shah <span class="meta">&lt;priya.shah@example.com&gt;</span></div>
+        <div class="meta">to me · Oct 18, 2:41 PM</div>
+        <p>Hi Alex,</p>
+        <p>We're putting together a lunch &amp; learn on the new reporting dashboard for the team. Would Tuesday or Thursday afternoon next week work for you to present? It should take about 45 minutes, and we'll order lunch.</p>
+        <p>Let me know what suits you and I'll send the invite.</p>
+        <p>Thanks!<br />Priya</p>
+      </section>
+    </main>
+    <script src="stub.js"></script>
+    <script src="content.js"></script>
+  </body>
+</html>

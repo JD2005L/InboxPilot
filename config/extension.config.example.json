@@ -1,0 +1,4 @@
+{
+  "$comment": "Copy to config/extension.config.json (git-ignored) or set GMC_GOOGLE_CLIENT_ID. For a personal build only: the store build refuses a client ID, so every user brings their own Google app. A client ID is not a secret, but keep per-developer values out of git.",
+  "googleClientId": ""
+}
