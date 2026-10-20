@@ -11,6 +11,9 @@ export interface RuntimeConfig {
    * Calendar did not add a permission warning that would disable existing installs on update.
    */
   calendarBase: string;
+  /** Google Drive API, app data folder only (rule sync). Also reached through CORS, without a host permission. */
+  driveBase: string;
+  driveUploadBase: string;
   /** Codex CLI version reported when asking for the model catalog. */
   clientVersion: string;
   /** package.json version. */

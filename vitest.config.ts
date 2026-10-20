@@ -8,6 +8,8 @@ export default defineConfig({
       googleAuthBase: 'https://accounts.google.com',
       gmailBase: 'https://gmail.googleapis.com',
       calendarBase: 'https://www.googleapis.com/calendar/v3',
+      driveBase: 'https://www.googleapis.com/drive/v3',
+      driveUploadBase: 'https://www.googleapis.com/upload/drive/v3',
       clientVersion: '0.163.0',
       version: '0.0.0-test',
       googleClientId: '',

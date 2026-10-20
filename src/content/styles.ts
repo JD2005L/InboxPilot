@@ -258,6 +258,13 @@ textarea:focus-visible { outline: none; }
 .text-button .icon { width: 16px; height: 16px; }
 .button:disabled { opacity: 0.4; cursor: default; box-shadow: none; }
 
+/* Proposed automation rule: a compact definition list. */
+.rule-body { display: grid; gap: 4px; padding: 4px 16px 12px; font-size: 13.5px; line-height: 1.4; }
+.rule-body .subject { color: var(--on-surface); font-weight: 600; }
+.rule-row { display: grid; grid-template-columns: 56px 1fr; gap: 8px; overflow-wrap: anywhere; }
+.rule-label { color: var(--on-variant); }
+.rule-row .was { display: block; color: var(--on-variant); font-size: 12.5px; text-decoration: line-through; }
+
 /* Proposed calendar event: Calendar-style block with the details, linked to the email it came from. */
 .event-body { display: flex; gap: 12px; padding: 4px 16px 10px; }
 .event-icon { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--primary-container); color: var(--on-primary-container); }

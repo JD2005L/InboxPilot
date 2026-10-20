@@ -16,6 +16,8 @@ export class ChatgptError extends Error {
     message: string,
     /** True when reconnecting ChatGPT is the fix. */
     readonly auth = false,
+    /** Set when the plan's usage limit was reached: when it resets (ms), or 0 when ChatGPT did not say. */
+    readonly limitResetsAt: number | null = null,
   ) {
     super(message);
     this.name = 'ChatgptError';
@@ -95,7 +97,10 @@ export class ChatgptClient {
       if (type === 'response.output_text.delta' && typeof event.delta === 'string') handlers.onTextDelta(event.delta);
       else if (type === 'response.output_item.done' && event.item && typeof event.item === 'object') handlers.onItem(event.item as ConversationItem);
       else if (type === 'response.completed') completed = true;
-      else if (type === 'response.failed' || type === 'response.incomplete' || type === 'error') throw new ChatgptError(describeFailure(event));
+      else if (type === 'response.failed' || type === 'response.incomplete' || type === 'error') {
+        const message = describeFailure(event);
+        throw new ChatgptError(message, false, message.includes('usage limit') ? 0 : null);
+      }
     }
     if (!completed && !request.signal.aborted) throw new ChatgptError('ChatGPT stopped answering partway through. Try again.');
   }
@@ -127,8 +132,22 @@ export class ChatgptClient {
       await this.deps.session.expire();
       throw new ChatgptError('ChatGPT no longer accepts this sign-in. Reconnect ChatGPT in Inbox Pilot settings.', true);
     }
-    throw new ChatgptError(describeHttpError(response.status, text));
+    throw new ChatgptError(describeHttpError(response.status, text), false, usageLimitReset(response.status, text));
   }
+}
+
+/** When a usage-limit error says the limit resets (ms since epoch), 0 if it does not say, null if not a limit error. */
+export function usageLimitReset(status: number, text: string): number | null {
+  let error: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(text) as { error?: unknown };
+    if (parsed.error && typeof parsed.error === 'object') error = parsed.error as Record<string, unknown>;
+  } catch {
+    error = {};
+  }
+  const code = [error.code, error.type].find((v): v is string => typeof v === 'string') ?? '';
+  if (status !== 429 && !code.includes('usage_limit')) return null;
+  return typeof error.resets_at === 'number' ? error.resets_at * 1000 : 0;
 }
 
 /** Plain words for the errors people actually hit: usage limits, plans without Codex access, outages. */

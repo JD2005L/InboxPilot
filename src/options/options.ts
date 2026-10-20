@@ -4,6 +4,7 @@ import { isBroadcast, OPTIONS_TABS, type Diagnostics, type OptionsTab, type Requ
 import { EFFORTS, type ChatgptState, type Effort, type GmailState, type Preferences, type Problem } from '../shared/types';
 import { clientIdProblem } from '../background/gmail/auth';
 import { planLabel } from '../background/chatgpt/jwt';
+import { invalidateRules, rulesTab } from './rulesTab';
 import { APP_NAME, CHATGPT_SECURITY_URL, currentSubstep, defaultWizard, GMAIL_URL, GOOGLE_SUBSTEPS, GOOGLE_URLS, parseWizard, setupStep, WIZARD_KEY, type GoogleSubstep, type SetupStep, type Wizard } from './setup';
 
 const app = document.getElementById('app')!;
@@ -24,6 +25,7 @@ const wizard: Wizard = loadWizard();
 const TABS: { id: OptionsTab; label: string }[] = [
   { id: 'setup', label: 'Setup' },
   { id: 'assistant', label: 'Assistant' },
+  { id: 'rules', label: 'Rules' },
   { id: 'privacy', label: 'Privacy & advanced' },
 ];
 const TAB_KEY = 'gmc.options.tab';
@@ -503,6 +505,13 @@ function problemFix(d: Diagnostics, fix: Problem['fix']): HTMLElement | null {
         h('div', { className: 'row' }, link('Turn on the Google Calendar API', GOOGLE_URLS.calendarApi, 'button primary')),
         h('p', { className: 'muted' }, 'Check the project picker at the top shows your Inbox Pilot project, click Enable, wait a minute, then click Connect Calendar again.'),
       );
+    case 'sync-api-disabled':
+      return box(
+        h('div', { className: 'row' }, link('Turn on the Google Drive API', GOOGLE_URLS.driveApi, 'button primary')),
+        h('p', { className: 'muted' }, 'Check the project picker at the top shows your Inbox Pilot project, click Enable, wait a minute, then click Turn on sync again.'),
+      );
+    case 'sync-scope':
+      return box(h('p', {}, 'Click ', ui('Turn on sync'), ' again. On Google’s permission screen, tick ', ui('See, create, and delete its own configuration data in your Google Drive'), ' before clicking Continue.'));
     case 'calendar-scope':
       return box(h('p', {}, 'Click ', ui('Connect Calendar'), ' again. On Google’s permission screen, tick ', ui('View and edit events on all your calendars'), ' before clicking Continue.'));
     case 'google-scope':
@@ -903,6 +912,22 @@ function paint(): void {
     case 'assistant':
       content = [modelCard(d), behaviourCard(d), connectionsCard(d)];
       break;
+    case 'rules':
+      content = rulesTab({
+        d,
+        render,
+        send,
+        act,
+        say: (text, kind) => {
+          message = { text, kind };
+          render();
+        },
+        button,
+        link,
+        ui,
+        problemBlock: (problem) => problemBlock(d, problem),
+      });
+      break;
     case 'privacy':
       content = [privacyCard(), advancedCard(d)];
       break;
@@ -932,6 +957,7 @@ function syncPairing(d: Diagnostics): void {
 
 chrome.runtime.onMessage.addListener((msg: unknown) => {
   if (!isBroadcast(msg)) return;
+  invalidateRules();
   // Bursts of background updates become one reload.
   if (reloadTimer) clearTimeout(reloadTimer);
   reloadTimer = setTimeout(() => {

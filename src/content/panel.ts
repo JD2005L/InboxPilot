@@ -2,6 +2,7 @@ import { formatDate, h, icon } from '../shared/dom';
 import { renderMarkdown } from '../shared/markdown';
 import type { ChatFix, ChatServerMessage, EventProposal, OpenEmail, OptionsTab, PanelStatus, Proposal } from '../shared/messages';
 import type { ConversationItem, EmailRef } from '../shared/types';
+import { describeAction, describeTrigger, type Destination, type Rule } from '../shared/rules';
 import { describeWhen } from '../shared/when';
 import { PANEL_CSS } from './styles';
 
@@ -54,6 +55,18 @@ interface ProposalState {
   result: string | null;
 }
 
+/** A proposed automation rule and where the user is with it. */
+interface RuleState {
+  id: string;
+  mode: 'create' | 'update' | 'delete';
+  rule: Rule;
+  before?: Rule;
+  summary: string;
+  destinations: Destination[];
+  phase: 'pending' | 'creating' | 'created' | 'cancelled';
+  result: string | null;
+}
+
 interface Turn {
   question: string;
   steps: Step[];
@@ -62,6 +75,7 @@ interface Turn {
   emails: Map<string, EmailRef>;
   proposals: ProposalState[];
   events: EventState[];
+  rules: RuleState[];
   error: { message: string; fix?: ChatFix } | null;
   done: boolean;
   el: HTMLElement;
@@ -291,7 +305,7 @@ export class ChatPanel {
     if (!question || this.active || !this.ready()) return;
     this.textarea.value = '';
     this.autosize();
-    const turn: Turn = { question, steps: [], thinking: 'Thinking', text: '', emails: new Map(), proposals: [], events: [], error: null, done: false, el: h('article', { className: 'turn' }) };
+    const turn: Turn = { question, steps: [], thinking: 'Thinking', text: '', emails: new Map(), proposals: [], events: [], rules: [], error: null, done: false, el: h('article', { className: 'turn' }) };
     this.turns.push(turn);
     this.active = turn;
     this.renderTurn(turn);
@@ -350,6 +364,10 @@ export class ChatPanel {
       this.eventResult(message);
       return;
     }
+    if (message.type === 'rule-result') {
+      this.ruleResult(message);
+      return;
+    }
     const turn = this.active;
     if (!turn || message.type === 'ping') return;
     switch (message.type) {
@@ -374,6 +392,9 @@ export class ChatPanel {
         break;
       case 'event-proposal':
         turn.events.push({ event: message.event, phase: 'pending', result: null, link: null });
+        break;
+      case 'rule-proposal':
+        turn.rules.push({ id: message.id, mode: message.mode, rule: message.rule, ...(message.before ? { before: message.before } : {}), summary: message.summary, destinations: message.destinations, phase: 'pending', result: null });
         break;
       case 'delta':
         turn.thinking = null;
@@ -451,6 +472,7 @@ export class ChatPanel {
     if (turn.done && numbers.size) children.push(this.sources(turn, numbers));
     if (turn.done) for (const state of turn.proposals) children.push(this.proposalCard(turn, state));
     if (turn.done) for (const state of turn.events) children.push(this.eventCard(turn, state));
+    if (turn.done) for (const state of turn.rules) children.push(this.ruleCard(turn, state));
     if (turn.error) children.push(this.errorBox(turn.error));
     turn.el.replaceChildren(...children.filter((c): c is Node => !!c));
   }
@@ -653,6 +675,79 @@ export class ChatPanel {
       if (message.ok) this.history.push({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: `(Calendar: "${state.event.title}". ${message.message})` }] });
       if (!message.ok) turn.error = { message: message.message };
       else turn.error = null;
+      this.renderTurn(turn);
+      return;
+    }
+  }
+
+  /** A proposed automation rule: when, which mail, the question, what it does; Create rule / Cancel. */
+  private ruleCard(turn: Turn, state: RuleState): HTMLElement {
+    const { rule } = state;
+    const titles = { create: ['Create this rule?', 'Rule created', 'Create rule'], update: ['Change this rule?', 'Rule updated', 'Save changes'], delete: ['Delete this rule?', 'Rule deleted', 'Delete rule'] } as const;
+    const [ask, doneTitle, confirmLabel] = titles[state.mode];
+    const card = h('section', { className: `proposal rule-card is-${state.phase}`, 'aria-label': `Rule: ${rule.name}` });
+    card.append(h('div', { className: 'proposal-head' }, h('strong', {}, state.phase === 'created' ? doneTitle : ask), state.summary ? h('span', { className: 'muted' }, state.summary) : null));
+    const describe = (r: Rule) => ({
+      Status: r.enabled ? 'On' : 'Paused',
+      When: describeTrigger(r.trigger),
+      Emails: r.query || 'Every new email',
+      If: r.test || '(no question: the filter decides)',
+      Then: r.actions.map((a) => describeAction(a, state.destinations)).join(', '),
+      Limit: `${r.dailyLimit} a day`,
+    });
+    const now = describe(rule);
+    const was = state.before ? describe(state.before) : null;
+    // For a change: only what changes, each with its old value; otherwise the whole rule.
+    const rows = (Object.keys(now) as (keyof typeof now)[])
+      .filter((k) => !was || was[k] !== now[k])
+      .map((k) => h('div', { className: 'rule-row' }, h('span', { className: 'rule-label' }, k), h('span', {}, now[k], was ? h('span', { className: 'was' }, `was: ${was[k]}`) : null)));
+    card.append(h('div', { className: 'rule-body' }, h('span', { className: 'subject' }, state.before && state.before.name !== rule.name ? `${state.before.name} → ${rule.name}` : rule.name), ...(state.mode === 'delete' ? [] : rows)));
+    const actions = h('div', { className: 'proposal-actions' });
+    if (state.phase === 'pending') {
+      const create = h('button', { type: 'button', className: 'button' }, confirmLabel);
+      create.addEventListener('click', () => {
+        let port: chrome.runtime.Port;
+        try {
+          port = this.ensurePort();
+        } catch {
+          state.phase = 'cancelled';
+          state.result = 'Inbox Pilot was updated or reloaded. Reload this Gmail tab and ask again.';
+          this.renderTurn(turn);
+          return;
+        }
+        state.phase = 'creating';
+        this.renderTurn(turn);
+        port.postMessage({ type: 'rule/create', proposalId: state.id });
+      });
+      const cancel = h('button', { type: 'button', className: 'text-button' }, 'Cancel');
+      cancel.addEventListener('click', () => {
+        state.phase = 'cancelled';
+        state.result = 'Cancelled. Nothing was changed.';
+        this.renderTurn(turn);
+      });
+      actions.append(create, cancel);
+    } else if (state.phase === 'creating') {
+      actions.append(h('span', { className: 'spinner', 'aria-hidden': 'true' }), h('span', { className: 'muted' }, 'Creating…'));
+    } else {
+      actions.append(h('span', { className: 'result' }, state.result ?? ''));
+      if (state.phase === 'created') {
+        const manage = h('button', { type: 'button', className: 'text-button' }, 'Manage rules', icon('external'));
+        manage.addEventListener('click', () => this.deps.openSettings('rules'));
+        actions.append(manage);
+      }
+    }
+    card.append(actions);
+    return card;
+  }
+
+  private ruleResult(message: Extract<ChatServerMessage, { type: 'rule-result' }>): void {
+    for (const turn of this.turns) {
+      const state = turn.rules.find((r) => r.id === message.proposalId);
+      if (!state) continue;
+      state.phase = message.ok ? 'created' : 'pending';
+      state.result = message.message;
+      turn.error = message.ok ? null : { message: message.message };
+      if (message.ok) this.history.push({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: `(${message.message})` }] });
       this.renderTurn(turn);
       return;
     }

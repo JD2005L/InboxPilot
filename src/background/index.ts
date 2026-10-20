@@ -4,7 +4,12 @@ import { DEFAULT_PREFERENCES, EFFORTS, type ModelOption, type Preferences } from
 import { CalendarApi } from './calendar/api';
 import { EventBook } from './calendar/book';
 import { eventResource, gmailThreadUrl } from './calendar/event';
-import { ChatEngine } from './chat/engine';
+import { ChatEngine, pick } from './chat/engine';
+import { Actor } from './rules/actions';
+import { Judge } from './rules/judge';
+import { RuleRunner } from './rules/runner';
+import { DriveStore, LocalStore } from './rules/store';
+import { sanitizeRule, type AutomationStatus, type Rule } from '../shared/rules';
 import { ChatgptClient } from './chatgpt/client';
 import { ChatgptSession } from './chatgpt/session';
 import { GmailApi } from './gmail/api';
@@ -42,6 +47,7 @@ const gmailAuth = new GmailAuth({
   authBase: CONFIG.googleAuthBase,
   gmailBase: CONFIG.gmailBase,
   calendarBase: CONFIG.calendarBase,
+  driveBase: CONFIG.driveBase,
   local: chrome.storage.local,
   sync: chrome.storage.sync,
   identity: chrome.identity,
@@ -61,11 +67,89 @@ const engine = new ChatEngine({
   canCalendar: () => gmailAuth.canCalendar(),
   readPdf,
   gmailEmail,
+  // The runner is created further down; this only runs once a question is asked.
+  rules: () => runner.rules(),
 });
 
 async function gmailEmail(): Promise<string | null> {
   const state = await gmailAuth.state();
   return state.kind === 'signed-in' ? state.email : null;
+}
+
+/** storage.local: this browser's identity among the user's browsers (the name is shown in the others). */
+const NODE_KEY = 'automation.node';
+const STATUS_KEY = 'automation.status';
+const RULES_ALARM = 'inbox-pilot-rules';
+
+async function node(): Promise<{ id: string; name: string; version: string }> {
+  const stored = (await chrome.storage.local.get(NODE_KEY))[NODE_KEY] as { id?: string; name?: string } | undefined;
+  if (stored?.id && stored.name) return { id: stored.id, name: stored.name, version: CONFIG.version };
+  const id = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+  const platform = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform || 'Chrome';
+  const fresh = { id, name: `${platform} browser ${id.slice(0, 4).toUpperCase()}` };
+  await chrome.storage.local.set({ [NODE_KEY]: fresh });
+  return { ...fresh, version: CONFIG.version };
+}
+
+/** The site pattern a webhook URL needs permission for (match patterns ignore the port). */
+function originPattern(url: string): string {
+  const u = new URL(url);
+  return `${u.protocol}//${u.hostname}/*`;
+}
+
+const driveStore = new DriveStore({ fetch: boundFetch, base: CONFIG.driveBase, uploadBase: CONFIG.driveUploadBase, auth: gmailAuth });
+const runner = new RuleRunner({
+  gmail,
+  actor: new Actor({
+    gmail,
+    fetch: boundFetch,
+    canReach: (url) => chrome.permissions.contains({ origins: [originPattern(url)] }),
+    notify: async (title, message, url) => {
+      if (!(await chrome.permissions.contains({ permissions: ['notifications'] }))) return false;
+      const id = `inbox-pilot-${crypto.randomUUID()}`;
+      await chrome.storage.session.set({ [`notify:${id}`]: url });
+      await chrome.notifications.create(id, { type: 'basic', iconUrl: chrome.runtime.getURL('icons/icon128.png'), title: title.slice(0, 100), message: message.slice(0, 300), priority: 1 });
+      return true;
+    },
+  }),
+  judge: (test, emails, signal) =>
+    new Judge({
+      client,
+      // Rules ask short yes/no questions: the user's model at the lowest effort it offers.
+      model: async () => pick(await models(), { ...(await prefs()), effort: 'low' }),
+    }).judge(test, emails, signal),
+  local: new LocalStore(chrome.storage.local, now),
+  synced: async () => ((await gmailAuth.canSync()) ? driveStore : null),
+  gmailReady: async () => {
+    const state = await gmailAuth.state();
+    return state.kind === 'signed-in' ? { email: state.email } : null;
+  },
+  chatgptReady: async () => (await chatgpt.state()).kind === 'signed-in',
+  node,
+  memory: (mode) => {
+    const key = `automation.beat.${mode}`;
+    return {
+      get: async () => {
+        const v = (await chrome.storage.session.get(key))[key];
+        return typeof v === 'number' ? v : null;
+      },
+      set: async (v) => {
+        if (v === null) await chrome.storage.session.remove(key);
+        else await chrome.storage.session.set({ [key]: v });
+      },
+    };
+  },
+  timeZone: () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+  now,
+  onStatus: (status) => {
+    void chrome.storage.session.set({ [STATUS_KEY]: status });
+    chrome.runtime.sendMessage({ type: 'state/changed' } satisfies Broadcast).catch(() => undefined);
+  },
+});
+
+async function automationStatus(): Promise<AutomationStatus> {
+  const stored = (await chrome.storage.session.get(STATUS_KEY))[STATUS_KEY] as AutomationStatus | undefined;
+  return stored ?? runner.current();
 }
 
 let modelsError: string | null = null;
@@ -168,8 +252,36 @@ async function handle(request: Request, sender: chrome.runtime.MessageSender): P
       await gmailAuth.setClientId(String(request.clientId ?? ''));
       return { ok: true, data: null };
     case 'gmail/connect':
-      await gmailAuth.connect({ calendar: request.calendar === true });
+      await gmailAuth.connect({ calendar: request.calendar === true, sync: request.sync === true });
+      if (request.sync) void runner.tick();
       return { ok: true, data: null };
+    case 'rules/get': {
+      const [doc, activity, me] = await Promise.all([runner.rules(), runner.activity().catch(() => []), node()]);
+      return { ok: true, data: { doc, status: await automationStatus(), activity, node: { id: me.id, name: me.name } } };
+    }
+    case 'rules/save':
+      await runner.saveRules(request.doc);
+      void runner.tick();
+      broadcast();
+      return { ok: true, data: null };
+    case 'rules/test': {
+      const rule = sanitizeRule(request.rule);
+      if (!rule) return { ok: false, error: 'That rule is incomplete.' };
+      return { ok: true, data: await runner.dryRun(rule, new AbortController().signal) };
+    }
+    case 'rules/undo':
+      return { ok: true, data: await runner.undo(String(request.entryId), new AbortController().signal) };
+    case 'rules/run-now':
+      await runner.tick();
+      return { ok: true, data: null };
+    case 'node/rename': {
+      const me = await node();
+      const name = String(request.name ?? '').trim().slice(0, 60);
+      if (!name) return { ok: false, error: 'Give this browser a name.' };
+      await chrome.storage.local.set({ [NODE_KEY]: { id: me.id, name } });
+      void runner.tick();
+      return { ok: true, data: null };
+    }
     case 'gmail/signout':
       await gmailAuth.signOut();
       return { ok: true, data: null };
@@ -202,7 +314,10 @@ chrome.runtime.onConnect.addListener((port) => {
   // What this panel was shown, so a Confirm can only ever change conversations the user reviewed.
   const proposals = new ProposalBook();
   const events = new EventBook();
+  // Rules this panel proposed, each creatable once, exactly as shown.
+  const proposedRules = new Map<string, { mode: 'create' | 'update' | 'delete'; rule: Rule } | null>();
   const post = (message: ChatServerMessage) => {
+    if (message.type === 'rule-proposal') proposedRules.set(message.id, { mode: message.mode, rule: message.rule });
     if (message.type === 'proposal') proposals.add(message.proposal);
     if (message.type === 'event-proposal') events.add(message.event);
     try {
@@ -227,6 +342,30 @@ chrome.runtime.onConnect.addListener((port) => {
     }
     if (message?.type === 'event/add' || message?.type === 'event/undo') {
       void calendarEvent(message, events, post);
+      return;
+    }
+    if (message?.type === 'rule/create') {
+      const entry = proposedRules.get(message.proposalId);
+      proposedRules.set(message.proposalId, null);
+      if (!entry) return post({ type: 'rule-result', proposalId: message.proposalId, ok: false, message: 'That rule was already handled.' });
+      const { mode, rule } = entry;
+      void runner
+        .rules()
+        .then(async (doc) => {
+          const exists = doc.rules.some((r) => r.id === rule.id);
+          if (mode !== 'create' && !exists) throw new Error(`“${rule.name}” no longer exists.`);
+          const rules = mode === 'create' ? [...doc.rules, rule] : mode === 'update' ? doc.rules.map((r) => (r.id === rule.id ? rule : r)) : doc.rules.filter((r) => r.id !== rule.id);
+          await runner.saveRules({ ...doc, rules });
+          broadcast();
+          void runner.tick();
+          const text =
+            mode === 'create' ? `Created “${rule.name}”. It runs while Chrome is open; see it under Inbox Pilot settings, Rules.` : mode === 'update' ? `Saved the changes to “${rule.name}”.` : `Deleted “${rule.name}”.`;
+          post({ type: 'rule-result', proposalId: message.proposalId, ok: true, message: text });
+        })
+        .catch((error: unknown) => {
+          proposedRules.set(message.proposalId, entry);
+          post({ type: 'rule-result', proposalId: message.proposalId, ok: false, message: error instanceof Error ? error.message : String(error) });
+        });
       return;
     }
     if (message?.type !== 'ask' || typeof message.question !== 'string' || !Array.isArray(message.history)) return;
@@ -301,6 +440,25 @@ async function lockTokenStorage(): Promise<void> {
     // Older Chrome: content scripts still never ask for these keys.
   }
 }
+
+/** Once a minute: heartbeat, and the rules if this browser leads. Re-created if missing (alarms survive restarts). */
+async function ensureAlarm(): Promise<void> {
+  if (!(await chrome.alarms.get(RULES_ALARM))) await chrome.alarms.create(RULES_ALARM, { periodInMinutes: 1, delayInMinutes: 0.1 });
+}
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === RULES_ALARM) void runner.tick();
+});
+// Registered at the top level so a click wakes the worker; chrome.notifications exists only once it was allowed.
+if (chrome.notifications) {
+  chrome.notifications.onClicked.addListener((id) => {
+    void chrome.storage.session.get(`notify:${id}`).then((stored) => {
+      const url = stored[`notify:${id}`];
+      if (typeof url === 'string' && url.startsWith('https://mail.google.com/')) void chrome.tabs.create({ url });
+      void chrome.notifications.clear(id);
+    });
+  });
+}
+void ensureAlarm();
 
 chrome.runtime.onInstalled.addListener((details) => {
   void lockTokenStorage();

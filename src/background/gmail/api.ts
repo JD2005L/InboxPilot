@@ -9,6 +9,8 @@ export class GmailApiError extends Error {
     message: string,
     /** True when reconnecting Gmail is the fix. */
     readonly auth = false,
+    /** HTTP 404: the message, thread or history position no longer exists. */
+    readonly notFound = false,
   ) {
     super(message);
     this.name = 'GmailApiError';
@@ -39,6 +41,53 @@ export class GmailApi {
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, ids.length) }, worker));
     return results.filter(Boolean);
+  }
+
+  /** Message and thread IDs matching a search, newest first, without fetching the messages. */
+  async searchIds(query: string, max: number, signal: AbortSignal): Promise<{ id: string; threadId: string }[]> {
+    const params = new URLSearchParams({ q: query, maxResults: String(max) });
+    const list = (await this.get(`users/me/messages?${params.toString()}`, signal)) as { messages?: { id: string; threadId: string }[] };
+    return (list.messages ?? []).slice(0, max);
+  }
+
+  /** The mailbox's current history ID: where "what is new since" starts. */
+  async historyId(signal: AbortSignal): Promise<string> {
+    const profile = (await this.get('users/me/profile', signal)) as { historyId?: string };
+    if (!profile.historyId) throw new GmailApiError('Gmail did not return a history ID.');
+    return profile.historyId;
+  }
+
+  /**
+   * Messages added to the mailbox since `startHistoryId` (new mail, but also drafts and sent mail, which callers
+   * filter out by label), and the history ID to continue from. Null when Gmail no longer has history that old.
+   */
+  async newMessages(startHistoryId: string, signal: AbortSignal): Promise<{ messages: { id: string; threadId: string; labelIds: string[] }[]; historyId: string } | null> {
+    const messages: { id: string; threadId: string; labelIds: string[] }[] = [];
+    let pageToken = '';
+    let historyId = startHistoryId;
+    try {
+      do {
+        const params = new URLSearchParams({ startHistoryId, historyTypes: 'messageAdded', maxResults: '500' });
+        if (pageToken) params.set('pageToken', pageToken);
+        const body = (await this.get(`users/me/history?${params.toString()}`, signal)) as {
+          history?: { messagesAdded?: { message?: { id?: string; threadId?: string; labelIds?: string[] } }[] }[];
+          historyId?: string;
+          nextPageToken?: string;
+        };
+        for (const h of body.history ?? []) {
+          for (const added of h.messagesAdded ?? []) {
+            const m = added.message;
+            if (m?.id && m.threadId) messages.push({ id: m.id, threadId: m.threadId, labelIds: m.labelIds ?? [] });
+          }
+        }
+        if (body.historyId) historyId = body.historyId;
+        pageToken = body.nextPageToken ?? '';
+      } while (pageToken && messages.length < 2000);
+    } catch (error) {
+      if (error instanceof GmailApiError && error.notFound) return null;
+      throw error;
+    }
+    return { messages, historyId };
   }
 
   /** Every message of a thread, with full bodies. */
@@ -134,7 +183,7 @@ export class GmailApi {
     if (response.status === 403 && /insufficient|scope/i.test(message + String(typeof body.error?.status === 'string' ? body.error.status : ''))) {
       throw new GmailApiError('Gmail access is read-only. Reconnect Gmail in Inbox Pilot settings and allow it to manage your email, to use drafts and organizing.', true);
     }
-    if (response.status === 404) throw new GmailApiError('That email no longer exists (it may have been deleted).');
+    if (response.status === 404) throw new GmailApiError('That email no longer exists (it may have been deleted).', false, true);
     if (response.status === 429) throw new GmailApiError('Gmail is rate limiting requests. Wait a minute and try again.');
     throw new GmailApiError(`Gmail returned an error (HTTP ${response.status}${message ? `: ${message}` : ''}).`);
   }

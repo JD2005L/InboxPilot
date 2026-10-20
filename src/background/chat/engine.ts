@@ -7,6 +7,7 @@ import { GmailApiError, type GmailApi } from '../gmail/api';
 import { ATTACHMENT_BYTE_LIMIT, attachmentText, type PdfReader } from '../gmail/attachments';
 import { extractBody, header, messageDate, searchLine, threadText, toRef } from '../gmail/message';
 import { buildRaw, replyFields } from '../gmail/mime';
+import { RULE_ACTIONS, RULE_LIMITS, ruleProblems, sanitizeRule, type Rule, type RuleAction, type RulesDoc } from '../../shared/rules';
 import { addDays, DATE_RE, describeWhen, wallMs, zonedToUtc } from '../../shared/when';
 import { CALENDAR_TOOLS, systemPrompt, TOOLS } from './prompt';
 
@@ -35,6 +36,8 @@ export interface ChatEngineDeps {
   /** Whether the Google sign-in includes Calendar access. */
   canCalendar: () => Promise<boolean>;
   readPdf: PdfReader;
+  /** The user's automation rules and webhook destinations (propose_rule may only use those destinations). */
+  rules: () => Promise<RulesDoc>;
 }
 
 type Ask = Extract<ChatClientMessage, { type: 'ask' }>;
@@ -62,9 +65,11 @@ export class ChatEngine {
     const { model, effort } = pick(await this.deps.models(), prefs);
     const tz = validTimeZone(ask.timeZone);
     const context = ask.context && THREAD_ID_RE.test(ask.context.threadId) ? { threadId: ask.context.threadId, subject: String(ask.context.subject).slice(0, 300) } : null;
-    const [canModify, canCalendar] = await Promise.all([this.deps.canModify(), this.deps.canCalendar()]);
+    const [canModify, canCalendar, rules] = await Promise.all([this.deps.canModify(), this.deps.canCalendar(), this.deps.rules().catch(() => ({ rules: [], destinations: [] }))]);
     const tools = canCalendar ? [...TOOLS, ...CALENDAR_TOOLS] : TOOLS;
-    const developer: ConversationItem = { type: 'message', role: 'developer', content: [{ type: 'input_text', text: systemPrompt({ email, timeZone: tz, now: ask.now, openEmail: context, canModify, canCalendar }) }] };
+    const destinations = rules.destinations.map((d) => d.name);
+    const ruleNames = rules.rules.map((r) => r.name);
+    const developer: ConversationItem = { type: 'message', role: 'developer', content: [{ type: 'input_text', text: systemPrompt({ email, timeZone: tz, now: ask.now, openEmail: context, canModify, canCalendar, destinations, ruleNames }) }] };
     const question: ConversationItem = { type: 'message', role: 'user', content: [{ type: 'input_text', text: ask.question.slice(0, 4000) }] };
     const history = trimHistory(ask.history.filter(isItem), HISTORY_CHAR_BUDGET);
     const turn: ConversationItem[] = [question];
@@ -162,6 +167,9 @@ export class ChatEngine {
       if (call.name === 'read_attachment') return await this.readAttachment(call, emit, signal);
       if (call.name === 'create_draft') return await this.createDraft(call, seen, emit, signal, self);
       if (call.name === 'propose_actions') return await this.propose(call, emit, signal);
+      if (call.name === 'propose_rule') return await this.proposeRule(call, emit);
+      if (call.name === 'list_rules') return await this.listRules();
+      if (call.name === 'propose_rule_delete') return await this.proposeRuleDelete(call, emit);
       if (call.name === 'check_calendar') return await this.checkCalendar(call, timeZone, emit, signal, now);
       if (call.name === 'propose_event') return await this.proposeEvent(call, timeZone, seen, emit, signal, now);
       return JSON.stringify({ error: `unknown tool ${call.name}` });
@@ -249,6 +257,89 @@ export class ChatEngine {
           : 'The panel shows this list with Confirm and Cancel. Nothing has changed yet; do not say it is done.',
     });
   }
+  /** The user's rules as the model sees them, so it can explain or change them. */
+  private async listRules(): Promise<string> {
+    const doc = await this.deps.rules();
+    return JSON.stringify({
+      count: doc.rules.length,
+      rules: doc.rules.map((r) => ({
+        rule_id: r.id,
+        name: r.name,
+        enabled: r.enabled,
+        when: r.trigger.kind === 'new-mail' ? 'each new email' : `every ${r.trigger.everyMinutes} minutes`,
+        gmail_filter: r.query,
+        question: r.test,
+        actions: r.actions.map((a) => (a.kind === 'label' ? { kind: a.kind, label: a.label } : a.kind === 'webhook' ? { kind: a.kind, destination: doc.destinations.find((d) => d.id === a.destination)?.name ?? '(removed)' } : { kind: a.kind })),
+        daily_limit: r.dailyLimit,
+      })),
+      webhook_destinations: doc.destinations.map((d) => d.name),
+    });
+  }
+
+  /** Proposes deleting a rule. Nothing changes until the user confirms in the panel. */
+  private async proposeRuleDelete(call: FunctionCall, emit: (message: ChatServerMessage) => void): Promise<string> {
+    const doc = await this.deps.rules();
+    const rule = doc.rules.find((r) => r.id === call.args.rule_id);
+    if (!rule) return JSON.stringify({ error: 'rule_id must be one returned by list_rules' });
+    const summary = typeof call.args.summary === 'string' ? call.args.summary.trim().slice(0, 300) : '';
+    emit({ type: 'rule-proposal', id: crypto.randomUUID(), mode: 'delete', rule, summary, destinations: doc.destinations });
+    return JSON.stringify({ proposed: true, status: 'waiting for the user', note: 'The panel asks the user to confirm deleting it. It still exists; do not say it was deleted.' });
+  }
+
+  /**
+   * Proposes a new automation rule, or (with rule_id) a change to an existing one, where anything not given keeps
+   * its current value. Nothing is saved until the user confirms in the panel.
+   */
+  private async proposeRule(call: FunctionCall, emit: (message: ChatServerMessage) => void): Promise<string> {
+    const doc = await this.deps.rules();
+    const ruleId = typeof call.args.rule_id === 'string' ? call.args.rule_id : '';
+    const before = ruleId ? doc.rules.find((r) => r.id === ruleId) : undefined;
+    if (ruleId && !before) return JSON.stringify({ error: 'rule_id must be one returned by list_rules' });
+    if (!before && doc.rules.length >= RULE_LIMITS.rules) return JSON.stringify({ error: `the user already has ${RULE_LIMITS.rules} rules, the most allowed` });
+    const raw: unknown[] | null = Array.isArray(call.args.actions) ? call.args.actions : null;
+    if (!raw && !before) return JSON.stringify({ error: 'actions are required for a new rule' });
+    const actions: RuleAction[] = [];
+    for (const item of raw ?? []) {
+      const a = item as { kind?: unknown; label?: unknown; destination?: unknown };
+      const kind = RULE_ACTIONS.find((k) => k === a?.kind);
+      if (!kind) return JSON.stringify({ error: `action kind must be one of ${RULE_ACTIONS.join(', ')}` });
+      if (kind === 'webhook') {
+        // Only destinations the user set up themselves: a rule can never send mail anywhere an email suggested.
+        const name = typeof a.destination === 'string' ? a.destination.trim().toLowerCase() : '';
+        const destination = doc.destinations.find((d) => d.name.toLowerCase() === name);
+        if (!destination) return JSON.stringify({ error: doc.destinations.length ? `destination must be one of: ${doc.destinations.map((d) => d.name).join(', ')}` : 'no webhook destinations are set up; tell the user to add one in Inbox Pilot settings, Rules, then ask again' });
+        actions.push({ kind, destination: destination.id });
+      } else if (kind === 'label') actions.push({ kind, label: typeof a.label === 'string' ? a.label : '' });
+      else actions.push({ kind });
+    }
+    const str = (key: string) => (typeof call.args[key] === 'string' ? (call.args[key]).trim() : undefined);
+    const every = call.args.every_minutes === undefined ? undefined : Number(call.args.every_minutes);
+    const trigger: Rule['trigger'] =
+      every === undefined ? (before?.trigger ?? { kind: 'new-mail' }) : Number.isFinite(every) && every > 0 ? { kind: 'schedule', everyMinutes: Math.round(every) } : { kind: 'new-mail' };
+    const rule = sanitizeRule({
+      id: before?.id ?? crypto.randomUUID(),
+      name: str('name') ?? before?.name ?? '',
+      enabled: typeof call.args.enabled === 'boolean' ? call.args.enabled : (before?.enabled ?? true),
+      trigger,
+      query: str('gmail_filter') ?? before?.query ?? '',
+      test: str('question') ?? before?.test ?? '',
+      actions: raw ? actions : (before?.actions ?? []),
+      dailyLimit: Number(call.args.daily_limit) || before?.dailyLimit || RULE_LIMITS.defaultDailyLimit,
+    });
+    if (!rule) return JSON.stringify({ error: 'the rule is incomplete' });
+    const problems = ruleProblems(rule, doc.destinations);
+    if (problems.length) return JSON.stringify({ error: problems.join(' ') });
+    const summary = str('summary')?.slice(0, 300) ?? '';
+    emit({ type: 'rule-proposal', id: crypto.randomUUID(), mode: before ? 'update' : 'create', rule, ...(before ? { before } : {}), summary, destinations: doc.destinations });
+    return JSON.stringify({
+      proposed: true,
+      status: 'waiting for the user',
+      note: before
+        ? 'The panel shows the change (before and after) with Save changes and Cancel. Nothing has changed yet.'
+        : 'The panel shows the rule with Create rule and Cancel. It is not active yet; do not say it was created. Suggest the user tries "Test on recent mail" in Inbox Pilot settings, Rules, after creating it.',
+    });
+  }
+
   /** The user's primary calendar between two dates (inclusive), in their time zone. */
   private async checkCalendar(call: FunctionCall, timeZone: string, emit: (message: ChatServerMessage) => void, signal: AbortSignal, now: number): Promise<string> {
     if (!(await this.deps.canCalendar())) return JSON.stringify({ error: NO_CALENDAR });

@@ -134,6 +134,7 @@ function engineWith(turns: Turn[], canCalendar: boolean) {
     gmailEmail: () => Promise.resolve('me@example.com'),
     canModify: () => Promise.resolve(true),
     readPdf: () => Promise.resolve(''),
+    rules: () => Promise.resolve({ rules: [], destinations: [] }),
   });
   return { engine, requests, calendar };
 }

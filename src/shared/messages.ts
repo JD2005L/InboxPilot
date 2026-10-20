@@ -1,8 +1,27 @@
 import type { ChatgptState, ConversationItem, EmailRef, GmailState, ModelOption, Preferences } from './types';
+import type { ActivityEntry, AutomationStatus, Destination, Rule, RulesDoc } from './rules';
 import type { EventTimes } from './when';
 
+/** What the Rules tab shows. */
+export interface RulesView {
+  doc: RulesDoc;
+  status: AutomationStatus;
+  activity: ActivityEntry[];
+  node: { id: string; name: string };
+}
+
+/** One email from a test run of a rule. */
+export interface DryRunRow {
+  subject: string;
+  from: string;
+  date: string;
+  match: boolean;
+  summary: string;
+  threadId: string;
+}
+
 /** The Options page tabs; the chat panel can open one directly. */
-export const OPTIONS_TABS = ['setup', 'assistant', 'privacy'] as const;
+export const OPTIONS_TABS = ['setup', 'assistant', 'rules', 'privacy'] as const;
 export type OptionsTab = (typeof OPTIONS_TABS)[number];
 
 /** What a Gmail tab needs to know before offering the chat. Never contains a token. */
@@ -42,8 +61,15 @@ export type PrivilegedRequest =
   | { type: 'chatgpt/signout' }
   | { type: 'models/refresh' }
   | { type: 'google/set-client-id'; clientId: string }
-  /** calendar: also ask for Google Calendar access. */
-  | { type: 'gmail/connect'; calendar?: boolean }
+  /** calendar / sync: also ask for Google Calendar access, or for rule sync (Drive app data). */
+  | { type: 'gmail/connect'; calendar?: boolean; sync?: boolean }
+  | { type: 'rules/get' }
+  | { type: 'rules/save'; doc: RulesDoc }
+  /** Runs a rule over recent mail without doing anything. */
+  | { type: 'rules/test'; rule: Rule }
+  | { type: 'rules/undo'; entryId: string }
+  | { type: 'rules/run-now' }
+  | { type: 'node/rename'; name: string }
   | { type: 'gmail/signout' }
   | { type: 'prefs/set'; prefs: Partial<Preferences> };
 
@@ -58,6 +84,12 @@ export const PRIVILEGED_TYPES: ReadonlySet<string> = new Set<PrivilegedRequest['
   'models/refresh',
   'google/set-client-id',
   'gmail/connect',
+  'rules/get',
+  'rules/save',
+  'rules/test',
+  'rules/undo',
+  'rules/run-now',
+  'node/rename',
   'gmail/signout',
   'prefs/set',
 ]);
@@ -93,6 +125,8 @@ export type ChatClientMessage =
   | { type: 'undo'; proposalId: string }
   /** The user clicked Add on a proposed calendar event, or Undo after adding it. */
   | { type: 'event/add'; proposalId: string }
+  /** The user clicked Create on a rule the assistant proposed. */
+  | { type: 'rule/create'; proposalId: string }
   | { type: 'event/undo'; proposalId: string };
 
 export interface OpenEmail {
@@ -150,6 +184,12 @@ export type ChatServerMessage =
   | { type: 'event-proposal'; event: EventProposal }
   /** The outcome of Add or Undo on a proposed event. link: the event in Google Calendar. */
   | { type: 'event-result'; proposalId: string; ok: boolean; undone: boolean; message: string; link?: string }
+  /**
+   * A new rule, a change to one (before: as it is now), or a deletion, to confirm; nothing is saved until the user
+   * clicks. destinations: for showing names.
+   */
+  | { type: 'rule-proposal'; id: string; mode: 'create' | 'update' | 'delete'; rule: Rule; before?: Rule; summary: string; destinations: Destination[] }
+  | { type: 'rule-result'; proposalId: string; ok: boolean; message: string }
   | { type: 'delta'; text: string }
   | { type: 'email'; email: EmailRef }
   | { type: 'done'; items: ConversationItem[]; text: string }

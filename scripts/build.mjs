@@ -48,7 +48,12 @@ export function createManifest({ publicKey }) {
     // 140+: storage.local.setAccessLevel keeps the token store away from content scripts.
     minimum_chrome_version: '140',
     // offscreen: a hidden page that reads PDF attachments with pdf.js, created only when one is read.
-    permissions: ['storage', 'identity', 'offscreen'],
+    // alarms: runs the user's rules once a minute. Neither shows a permission warning.
+    permissions: ['storage', 'identity', 'offscreen', 'alarms'],
+    // Asked for only when the user adds a webhook destination (that one site) or turns on desktop notifications,
+    // so existing installs are not disabled by a new warning on update.
+    optional_permissions: ['notifications'],
+    optional_host_permissions: ['https://*/*', 'http://*/*'],
     // oauth2.googleapis.com: only to revoke the Google token when the user disconnects Gmail.
     host_permissions: ['https://mail.google.com/*', 'https://gmail.googleapis.com/*', 'https://oauth2.googleapis.com/*', 'https://auth.openai.com/*', 'https://chatgpt.com/*'],
     background: { service_worker: 'background.js', type: 'module' },
@@ -85,6 +90,8 @@ async function main() {
     googleAuthBase: 'https://accounts.google.com',
     gmailBase: 'https://gmail.googleapis.com',
     calendarBase: 'https://www.googleapis.com/calendar/v3',
+    driveBase: 'https://www.googleapis.com/drive/v3',
+    driveUploadBase: 'https://www.googleapis.com/upload/drive/v3',
     clientVersion: CODEX_CLIENT_VERSION,
     version: pkg.version,
     googleClientId: config.googleClientId,

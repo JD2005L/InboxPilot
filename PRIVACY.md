@@ -39,6 +39,24 @@ proposed event (title, time, place, and the email it came from) and adds it to y
 click Add. Undo removes it again. It never invites anyone, and it does not change or delete events already on your
 calendar.
 
+## Rules you set up (automation)
+
+Rules are optional. Each one is something you approved ahead of time: a Gmail filter, an optional yes/no question,
+and fixed actions. While Chrome is open, Inbox Pilot checks new mail (and runs scheduled rules) about once a minute:
+
+- Emails a rule's filter finds are sent to your ChatGPT account only if the rule has a question, for ChatGPT to
+  answer yes or no with a one-line summary. ChatGPT never chooses the actions, and email text cannot change a rule.
+- Actions you chose run on matching emails: label, archive, star, mark read or important, move to Trash (recoverable
+  for 30 days), a desktop notification, or a webhook. Every action is listed in the activity log, with Undo for the
+  Gmail changes.
+- **Webhooks** send the sender, subject, date, a Gmail link and ChatGPT's one-line summary (plus the email's text,
+  only if you ticked that for the destination) to the webhook URL **you** entered, such as your own Home Assistant,
+  n8n, ntfy topic, Discord or Slack. Chrome asks your permission for each destination's site in each browser.
+  What that service does with it is governed by that service.
+- **Sync** (optional): rules, destinations, the activity log and a heartbeat for each of your browsers are kept in a
+  hidden app-data folder in your own Google Drive, which only your Inbox Pilot Google app can see. It cannot see your
+  other Drive files. Without sync, the same data stays in this browser.
+
 ## Where data goes
 
 | Data | Sent to | Why |
@@ -48,6 +66,9 @@ calendar.
 | Drafts and confirmed organizing changes | Google (Gmail API) | To save the draft or apply the change you confirmed |
 | Calendar events you asked about | Google (Calendar API), then OpenAI | For ChatGPT to answer questions about your schedule |
 | Events you clicked Add on | Google (Calendar API) | To add them to your calendar |
+| Emails a rule with a question looks at | Google (Gmail API), then OpenAI | For ChatGPT to answer the rule's question |
+| What a rule with a webhook sends (see above) | The webhook URL you entered | Because your rule says so |
+| Rules, the activity log and browser heartbeats, if you turn on sync | Google (Drive API, app-data folder) | To share rules between your browsers and agree which one runs them |
 | Sign-in requests | Google (accounts.google.com), OpenAI (auth.openai.com) | To connect and keep your accounts connected |
 
 Nothing is sent anywhere else. There is no analytics, tracking or advertising. Attachments are downloaded and turned
@@ -60,7 +81,10 @@ into text inside your browser; only that text goes to your ChatGPT account, and 
 - **In Chrome Sync** (if you use it): your Google OAuth client ID (a public identifier, not a secret) and your
   assistant preferences (model, answer effort, results per search, search-bar behaviour, panel size).
 - **Conversations** exist only in the memory of the Gmail tab where you asked. Closing or reloading the tab erases them.
-- No email content is stored by the extension.
+- **Rules and the activity log** (each entry: time, rule, subject, sender, ChatGPT's one-line summary, what was done)
+  are kept in this browser, or in your Drive's hidden app-data folder if you turned on sync. The log keeps the most
+  recent 300 entries per browser.
+- No email bodies are stored by the extension.
 
 ## How email content is treated
 

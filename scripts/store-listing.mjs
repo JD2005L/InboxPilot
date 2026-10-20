@@ -128,6 +128,14 @@ export function storeListing(version) {
             'Reads the text of PDF email attachments with pdf.js (bundled in the package) when an answer needs them, e.g. "how much is the invoice?". pdf.js needs a document context and is large, so it runs in an offscreen document that is created only when a PDF is actually read, instead of in the service worker. The PDF is downloaded from the Gmail API and never leaves the browser except as extracted text sent to the user\'s ChatGPT account for the answer.',
         },
         {
+          label: 'alarms justification',
+          required: true,
+          kind: 'text',
+          limit: 1000,
+          value:
+            'Runs the automation rules the user set up in the settings page (for example "star and notify me about important new mail" or "archive promotions older than two weeks") about once a minute while Chrome is open. Each run checks Gmail for new mail since the last run and applies only the actions the user configured for that rule. With no rules, a run only refreshes the browser\'s status.',
+        },
+        {
           label: 'Host permission justification',
           required: true,
           kind: 'text',

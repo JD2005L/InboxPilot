@@ -19,7 +19,12 @@ export const MODIFY_SCOPE = 'https://www.googleapis.com/auth/gmail.modify';
  * they confirm. Not the full calendar scope, which could also share and delete whole calendars.
  */
 export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
-const KNOWN_SCOPES = [GMAIL_SCOPE, MODIFY_SCOPE, CALENDAR_SCOPE];
+/**
+ * Optional, asked for only once the user turns on rule sync: a hidden Drive folder only this Google app can see,
+ * where rules, the activity log and each browser's heartbeat live. No access to the user's own Drive files.
+ */
+export const SYNC_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+const KNOWN_SCOPES = [GMAIL_SCOPE, MODIFY_SCOPE, CALENDAR_SCOPE, SYNC_SCOPE];
 /** storage.sync: the user's OAuth client ID. A public identifier, so it may follow them to their other browsers. */
 export const CLIENT_ID_KEY = 'google.clientId';
 /** storage.local (trusted contexts only). */
@@ -38,6 +43,7 @@ interface StoredToken {
   /** Older tokens predate this field: read-only. */
   canModify?: boolean;
   canCalendar?: boolean;
+  canSync?: boolean;
 }
 
 export class GmailAuthError extends Error {
@@ -57,6 +63,7 @@ export interface GmailAuthDeps {
   authBase: string;
   gmailBase: string;
   calendarBase: string;
+  driveBase: string;
   local: chrome.storage.StorageArea;
   sync: chrome.storage.StorageArea;
   identity: Pick<typeof chrome.identity, 'launchWebAuthFlow' | 'getRedirectURL'>;
@@ -89,6 +96,7 @@ export class GmailAuth {
   private problem: Problem | null = null;
   /** The last Calendar connect attempt's problem. Memory only: it is shown right after the attempt. */
   private calendarProblem: Problem | null = null;
+  private syncProblem: Problem | null = null;
   private renewing: Promise<StoredToken> | null = null;
 
   constructor(private readonly deps: GmailAuthDeps) {}
@@ -120,31 +128,37 @@ export class GmailAuth {
 
   async state(): Promise<GmailState> {
     if (!(await this.clientId())) return { kind: 'no-client' };
-    const calendarProblem = this.calendarProblem ? { calendarProblem: this.calendarProblem } : {};
+    const calendarProblem = { ...(this.calendarProblem ? { calendarProblem: this.calendarProblem } : {}), ...(this.syncProblem ? { syncProblem: this.syncProblem } : {}) };
     const token = await this.stored();
-    if (token) return { kind: 'signed-in', email: token.email, canModify: !!token.canModify, canCalendar: !!token.canCalendar, ...calendarProblem };
+    if (token) return { kind: 'signed-in', email: token.email, canModify: !!token.canModify, canCalendar: !!token.canCalendar, canSync: !!token.canSync, ...calendarProblem };
     const account = await this.account();
     // Signed in before, the hourly token simply ran out: still "connected"; the next request renews it silently.
     if (account && !this.problem) {
       const granted = await this.grantedScopes();
-      return { kind: 'signed-in', email: account, canModify: granted.includes(MODIFY_SCOPE), canCalendar: granted.includes(CALENDAR_SCOPE), ...calendarProblem };
+      return { kind: 'signed-in', email: account, canModify: granted.includes(MODIFY_SCOPE), canCalendar: granted.includes(CALENDAR_SCOPE), canSync: granted.includes(SYNC_SCOPE), ...calendarProblem };
     }
     return this.problem ? { kind: 'signed-out', problem: this.problem } : { kind: 'signed-out' };
   }
 
   /**
-   * Interactive sign-in, from the settings page or the panel's "Reconnect Gmail" button. With `calendar`, Calendar
-   * access is asked for as well, and checked against the Calendar API straight away so a missing step shows here.
+   * Interactive sign-in, from the settings page or the panel's "Reconnect Gmail" button. With `calendar` or `sync`,
+   * that access is asked for as well, and checked against its API straight away so a missing step shows here.
    */
-  async connect(opts: { calendar?: boolean } = {}): Promise<void> {
+  async connect(opts: { calendar?: boolean; sync?: boolean } = {}): Promise<void> {
     this.problem = null;
-    this.calendarProblem = null;
+    if (opts.calendar) this.calendarProblem = null;
+    if (opts.sync) this.syncProblem = null;
     try {
-      const token = await this.authorize(true, !!opts.calendar);
+      const token = await this.authorize(true, { calendar: !!opts.calendar, sync: !!opts.sync });
       if (opts.calendar) {
         this.calendarProblem = token.canCalendar
-          ? await this.checkCalendar(token.accessToken)
+          ? await this.checkApi(token.accessToken, `${this.deps.calendarBase}/calendars/primary/events?maxResults=1`, 'Google Calendar', 'calendar-api-disabled')
           : { message: 'Google connected, but the calendar box was left unticked, so Inbox Pilot cannot see or add events.', fix: 'calendar-scope' };
+      }
+      if (opts.sync) {
+        this.syncProblem = token.canSync
+          ? await this.checkApi(token.accessToken, `${this.deps.driveBase}/files?spaces=appDataFolder&pageSize=1`, 'Google Drive', 'sync-api-disabled')
+          : { message: 'Google connected, but the box for Inbox Pilot’s own Drive data was left unticked, so rules cannot sync.', fix: 'sync-scope' };
       }
     } catch (error) {
       this.problem = error instanceof GmailAuthError ? { message: error.message, ...(error.fix ? { fix: error.fix } : {}) } : { message: error instanceof Error ? error.message : String(error) };
@@ -158,6 +172,7 @@ export class GmailAuth {
     await this.deps.local.remove([TOKEN_KEY, ACCOUNT_KEY, SCOPES_KEY]);
     this.problem = null;
     this.calendarProblem = null;
+    this.syncProblem = null;
     this.deps.onChange();
     if (token) {
       // Best effort: also end the grant on Google's side.
@@ -179,6 +194,12 @@ export class GmailAuth {
     return state.kind === 'signed-in' && state.canCalendar;
   }
 
+  /** Whether the current sign-in includes rule sync (Drive app data). */
+  async canSync(): Promise<boolean> {
+    const state = await this.state();
+    return state.kind === 'signed-in' && state.canSync && !state.syncProblem;
+  }
+
   /** A working access token, renewed silently when the hourly one ran out. */
   async token(force = false): Promise<string> {
     const stored = force ? null : await this.stored();
@@ -198,17 +219,20 @@ export class GmailAuth {
     }
   }
 
-  private async authorize(interactive: boolean, wantCalendar = false): Promise<StoredToken> {
+  private async authorize(interactive: boolean, want: { calendar?: boolean; sync?: boolean } = {}): Promise<StoredToken> {
     const clientId = await this.clientId();
     if (!clientId) throw new GmailAuthError('Add your Google client ID in Inbox Pilot settings first.', 'google-client');
     const state = crypto.randomUUID();
     const hint = await this.account();
-    // Interactive: ask for everything (the user may untick modify), plus Calendar when it is being connected or was
-    // granted before (so switching accounts keeps it). Silent: exactly what was granted before, since prompt=none
+    // Interactive: ask for everything (the user may untick modify), plus Calendar and sync when being connected or
+    // granted before (so switching accounts keeps them). Silent: exactly what was granted before, since prompt=none
     // fails outright if it would need to show a new permission.
     const granted = await this.grantedScopes();
-    const calendar = wantCalendar || granted.includes(CALENDAR_SCOPE) ? [CALENDAR_SCOPE] : [];
-    const scopes = interactive || !granted.length ? [GMAIL_SCOPE, MODIFY_SCOPE, ...calendar] : granted;
+    const optional = [
+      ...(want.calendar || granted.includes(CALENDAR_SCOPE) ? [CALENDAR_SCOPE] : []),
+      ...(want.sync || granted.includes(SYNC_SCOPE) ? [SYNC_SCOPE] : []),
+    ];
+    const scopes = interactive || !granted.length ? [GMAIL_SCOPE, MODIFY_SCOPE, ...optional] : granted;
     const params = new URLSearchParams({
       client_id: clientId,
       response_type: 'token',
@@ -249,7 +273,7 @@ export class GmailAuth {
       throw new GmailAuthError('Google signed you in, but the boxes that let the app read your email were left unticked. Connect again and tick them.', 'google-scope');
     }
     const email = await this.profileEmail(result.token);
-    const token: StoredToken = { accessToken: result.token, expiresAt: this.deps.now() + result.expiresIn * 1000, email, canModify, canCalendar: grantedNow.includes(CALENDAR_SCOPE) };
+    const token: StoredToken = { accessToken: result.token, expiresAt: this.deps.now() + result.expiresIn * 1000, email, canModify, canCalendar: grantedNow.includes(CALENDAR_SCOPE), canSync: grantedNow.includes(SYNC_SCOPE) };
     await this.deps.local.set({ [TOKEN_KEY]: token, [ACCOUNT_KEY]: email, [SCOPES_KEY]: grantedNow.filter((s) => KNOWN_SCOPES.includes(s)) });
     this.problem = null;
     return token;
@@ -272,21 +296,21 @@ export class GmailAuth {
     throw new GmailAuthError(`Gmail refused access (HTTP ${response.status}${message ? `: ${message}` : ''}).`);
   }
 
-  /** One cheap Calendar API call, to catch "the Calendar API is not turned on" while the user is on the settings page. */
-  private async checkCalendar(accessToken: string): Promise<Problem | null> {
+  /** One cheap API call, to catch "the API is not turned on in your project" while the user is on the settings page. */
+  private async checkApi(accessToken: string, url: string, name: string, fix: 'calendar-api-disabled' | 'sync-api-disabled'): Promise<Problem | null> {
     let response: Response;
     try {
-      response = await this.deps.fetch(`${this.deps.calendarBase}/calendars/primary/events?maxResults=1`, { headers: { Authorization: `Bearer ${accessToken}` }, credentials: 'omit', cache: 'no-store' });
+      response = await this.deps.fetch(url, { headers: { Authorization: `Bearer ${accessToken}` }, credentials: 'omit', cache: 'no-store' });
     } catch {
-      return { message: 'Google Calendar could not be reached. Check your connection and try again.' };
+      return { message: `${name} could not be reached. Check your connection and try again.` };
     }
     if (response.ok) return null;
     const body = (await response.json().catch(() => ({}))) as { error?: { message?: unknown; status?: unknown } };
     const message = typeof body.error?.message === 'string' ? body.error.message : '';
     if (response.status === 403 && /has not been used|is disabled|SERVICE_DISABLED/i.test(message + (typeof body.error?.status === 'string' ? body.error.status : ''))) {
-      return { message: 'The Google Calendar API is not turned on in your Google Cloud project yet. Turn it on, wait a minute, then connect Calendar again.', fix: 'calendar-api-disabled' };
+      return { message: `The ${name} API is not turned on in your Google Cloud project yet. Turn it on, wait a minute, then try again.`, fix };
     }
-    return { message: `Google Calendar refused access (HTTP ${response.status}${message ? `: ${message}` : ''}).` };
+    return { message: `${name} refused access (HTTP ${response.status}${message ? `: ${message}` : ''}).` };
   }
 
   private async stored(includeExpired = false): Promise<StoredToken | null> {

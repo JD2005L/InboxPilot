@@ -27,6 +27,7 @@ If Gmail's layout changes so the search bar cannot be found, a floating **Ask yo
 | **Show** | "Pull it up" opens the email in Gmail; "show me everything from…" runs the search in Gmail's list. |
 | **Draft** | Replies threaded into the conversation (In-Reply-To/References, Re: subject, right recipient) or new emails, saved as drafts and opened. **No send capability exists.** |
 | **Organize** | Archive, mark read/unread, star/unstar, add/remove label (created if missing), move to inbox, Trash (30-day recoverable). Always a **proposal**: the panel lists the conversations (untick any), Confirm applies, **Undo** reverses. Unsubscribe lists each sender's own unsubscribe link instead. |
+| **Rules** (optional) | Automation the user approves once: *"star and notify me about anything I'd regret missing"*, *"label bills"*, *"archive promotions older than two weeks every day"*, *"send school emails to my phone"*. Each rule is a Gmail filter, an optional yes/no question ChatGPT answers per email, and fixed actions (label, archive, star, mark read or important, Trash, desktop notification, webhook to ntfy, Home Assistant, n8n, Discord or Slack). New mail comes from Gmail's history feed, so nothing is missed while Chrome is closed (up to about a week). Daily limits, a dry run on recent mail, an activity log with Undo. Rules can be created, changed, paused and deleted from settings **or by asking in chat**, always confirmed on a card. |
 | **Calendar** (optional) | "Put my flights in my calendar": events from bookings and appointments, with local times and time zones as the email states them (a flight departs in one zone and lands in another), the details for the day, and a link back to the email. Each is a **proposal** card: **Add to calendar**, then **Undo** if needed. "Am I free Thursday afternoon?" reads the primary calendar. Nobody is invited; existing events are never changed. |
 
 Organizing is fenced in the background: a Confirm can only touch conversations that proposal showed (`ProposalBook`),
@@ -96,6 +97,24 @@ error Google or OpenAI can show:
 4. **Ask.** Type a question in Gmail's search bar and press Enter.
 5. **Calendar (optional).** Enable the Google Calendar API in the same project, then *Connect Calendar* under
    Connections and tick the calendar box. The settings page checks the API is on.
+
+### Rules across several computers
+
+With sync on (Rules tab, *Turn on sync*: enable the Drive API, tick one more box), rules, webhook destinations and
+the activity log live in the Google Drive **app-data folder** of the user's own Google app: hidden, private to that
+OAuth client, no access to their files. Every browser connected to it writes its own heartbeat file every minute.
+
+- **Who runs the rules:** of the browsers heard from in the last 3 minutes, the one that came online first. The
+  others stand by. Times are Drive's server timestamps, so the computers' clocks never need to agree.
+- **First in, last out:** a browser that missed its heartbeats (closed, asleep, offline) recreates its file when it
+  returns, so it rejoins at the back and never takes over from the browser that kept going.
+- **Handover:** the leader saves its position in Gmail's history feed, its queue and daily counts in a shared state
+  file, so the next leader continues exactly where it stopped.
+- **No locks needed:** every file has a single writer (the user for rules, the leader for state, each browser for its
+  heartbeat and its log), which matters because Drive has no compare-and-swap.
+
+ChatGPT usage limits pause only rules that ask ChatGPT, until the limit resets (from the error's `resets_at`);
+filter-only rules keep running, and new mail stays queued (up to 8 days) so nothing is skipped.
 
 ## Development
 
