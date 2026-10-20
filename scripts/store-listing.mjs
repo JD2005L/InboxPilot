@@ -53,16 +53,12 @@ Inbox Pilot is an independent extension. It is not made or endorsed by Google or
 
 More: ${SITE}`;
 
-const TEST_INSTRUCTIONS = `Inbox Pilot needs two accounts that only the reviewer can authorize: a ChatGPT account on a plan that includes Codex (Plus or higher), and a Gmail account. No credentials of ours are needed or used: everything signs in through the reviewer's own accounts, and the extension has no server.
-
-1. Install, then click the toolbar icon. The settings page opens on "Getting started".
-2. Connect ChatGPT: click "Connect ChatGPT", then "Open OpenAI's sign-in page", enter the code shown, and approve. (If OpenAI says device code sign-in is off: ChatGPT, Settings, Security, "Enable device code sign-in for Codex".)
-3. Create the Google app (about 5 minutes, free, no billing): the page walks through five parts with direct links: create a Google Cloud project, enable the Gmail API, set up Google Auth Platform (External), add the reviewer's Gmail address as a test user, and create an OAuth client of type "Web application" with the redirect URI the page shows. Paste the Client ID.
-4. Connect Gmail: click "Connect Gmail", choose the account, click Continue on "Google hasn't verified this app" (it is the reviewer's own app), tick both Gmail boxes, and continue.
-5. Open Gmail (reload any open Gmail tab). The first time after setup, the answer panel opens by itself and asks "What can you do?", so the reviewer sees a tour of the features and that everything is connected (Settings, Assistant, "Show me what it can do" runs it again any time). Then type a question into the search bar, such as "what was the most recent email about?", and press Enter. The answer appears under the search bar with numbered sources.
-6. Try: "summarize this email" with an email open; "draft a reply saying thanks" (a draft opens; nothing is sent); "archive emails older than a year from noreply senders" (a list appears with Confirm and Cancel; nothing changes until Confirm, and Undo reverses it).
-7. Optional, Calendar: in the same Google Cloud project, enable the Google Calendar API (Settings, Connections, Google Calendar shows the link), then click "Connect Calendar" and tick the calendar box. In Gmail, open an email that mentions a date and ask "add this to my calendar": an event card appears with "Add to calendar" and Cancel; nothing is added until Add, and Undo removes it.
-8. Optional, Rules: open Settings, Rules, choose the example "Don't miss what matters", and click "Test on recent mail": it lists which recent emails would match, without changing anything. Save it to run it about once a minute while Chrome is open; the Activity list shows what it did, with Undo. A rule can also be created by asking in Gmail, for example "whenever I get an invoice, label it Bills", which shows a rule card with "Create rule" and Cancel.`;
+// The dashboard field takes 500 characters; the full walkthrough is TESTING.md in the repository.
+const TEST_INSTRUCTIONS = `Uses the reviewer's own ChatGPT (Plus or higher) and Gmail accounts; no test account, no server.
+1. Click the toolbar icon: settings walks through connecting ChatGPT (device code) and creating a free Google OAuth client, then Connect Gmail.
+2. Open Gmail: the panel asks "What can you do?" for a tour.
+3. Type a question in Gmail's search bar, press Enter. Changes always wait for Confirm.
+Full steps (Calendar, Rules): https://github.com/JD2005L/InboxPilot/blob/main/TESTING.md`;
 
 export function storeListing(version) {
   return [
@@ -193,7 +189,7 @@ export function storeListing(version) {
     {
       tab: 'Test instructions',
       fields: [
-        { label: 'Test instructions', kind: 'text', limit: 5000, value: TEST_INSTRUCTIONS },
+        { label: 'Test instructions', kind: 'text', limit: 500, value: TEST_INSTRUCTIONS },
         { label: 'Username / Password', kind: 'info', value: '(leave empty: reviewers use their own ChatGPT and Gmail accounts)' },
       ],
     },
