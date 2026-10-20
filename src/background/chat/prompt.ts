@@ -51,12 +51,36 @@ ${automation}
 ${calendar}
 - You cannot send or forward email, and you cannot delete anything permanently. If asked to, say so and tell the user how to do it in Gmail.
 
+${capabilities(opts)}
+
 How to answer:
 - Lead with the answer in one or two sentences. Add supporting detail only when it helps. Be concise.
 - Cite every email you rely on as a Markdown link in exactly this form: [short description](thread:THREAD_ID), using the thread_id from the tools. Put each citation right after the fact it supports.
 - Give dates in the user's time zone, plainly (for example "Tue, Mar 4" or "yesterday at 3:10 PM").
 - Use a bullet list for several items. No tables. No headings for short answers.
 - If the mailbox does not contain the answer, say so plainly and suggest a Gmail search the user could try.`;
+}
+
+/**
+ * How to answer "what can you do?", which is also the question asked for the user right after setup: a tour that
+ * matches what this user has connected, so it doubles as their introduction to Inbox Pilot.
+ */
+function capabilities(opts: PromptContext): string {
+  const off = (what: string, how: string) => `${what} (not set up yet: ${how})`;
+  const draft = opts.canModify ? 'Draft replies and new emails' : off('Draft replies and new emails', 'in Inbox Pilot settings, click Allow drafts & organizing');
+  const organize = opts.canModify ? 'Organize mail' : off('Organize mail', 'the same Allow drafts & organizing button');
+  const calendar = opts.canCalendar ? 'Calendar' : off('Calendar', 'Inbox Pilot settings, Connections, Connect Calendar');
+  const rules = opts.ruleNames?.length ? `Rules (they have ${opts.ruleNames.length}: ${opts.ruleNames.map((r) => `"${r}"`).join(', ')})` : 'Rules';
+  return `When the user asks what you can do, how to use you, or for help (including "What can you do?" asked on their behalf right after setup): do not search; answer from this guide. Start with one welcoming sentence (setup worked, and you are their ChatGPT inside Gmail), then a short bold heading per area with one line of what it does and one example question in quotes, in this order:
+1. Find anything: plain-English questions become Gmail searches, with numbered links to the emails used. "When does my flight to Calgary leave?"
+2. Read attachments: PDFs, Word, Excel and PowerPoint files are read for the answer. "How much is the plumber's invoice and when is it due?"
+3. This email: with an email open, "this" means it. "Summarize this and tell me what they need from me."
+4. Show it in Gmail: opens an email, or lists every match in Gmail. "Show me everything from the school this month."
+5. ${draft}: saved as drafts in the right conversation for them to review and send; you can never send. "Draft a reply saying Thursday works."
+6. ${organize}: archive, label, star, mark read, move to Trash, always as a list they confirm, with Undo. "Archive promotions older than two weeks."
+7. ${calendar}: events from bookings and appointments with the right time zones, added only when they click Add; also checks their schedule. "Put my Toronto flights in my calendar."
+8. ${rules}: automations they approve once that run on new mail while Chrome is open, such as notifications, labels or a message to their phone, managed in settings or by asking. "Whenever the school emails, star it and notify me."
+Then, briefly: Gmail's search bar still searches normally; the chip at its right end shows whether Enter searches or asks, Shift+Enter always asks, Esc closes this panel, and the expand button gives more room. Mention that it runs on their own ChatGPT plan with no server in between, and that nothing changes in their mailbox without their confirmation. End by inviting them to try one of the examples. Keep it scannable: no tables, no more than about 250 words.`;
 }
 
 const threadId = { type: 'string', description: 'thread_id from search_emails or read_thread.' };

@@ -76,6 +76,22 @@ async function gmailEmail(): Promise<string | null> {
   return state.kind === 'signed-in' ? state.email : null;
 }
 
+/** storage.local: set on a fresh install, cleared once a Gmail tab has asked the welcome question. */
+const WELCOME_KEY = 'welcome.pending';
+let welcomeClaim: Promise<boolean> = Promise.resolve(false);
+
+/** True for exactly one caller: the first Gmail tab to claim the welcome after setup. Serialized across tabs. */
+function claimWelcome(): Promise<boolean> {
+  welcomeClaim = welcomeClaim.then(async () => {
+    if ((await chrome.storage.local.get(WELCOME_KEY))[WELCOME_KEY] !== true) return false;
+    const [chatgptState, gmailState] = await Promise.all([chatgpt.state(), gmailAuth.state()]);
+    if (chatgptState.kind !== 'signed-in' || gmailState.kind !== 'signed-in') return false;
+    await chrome.storage.local.remove(WELCOME_KEY);
+    return true;
+  });
+  return welcomeClaim;
+}
+
 /** storage.local: this browser's identity among the user's browsers (the name is shown in the others). */
 const NODE_KEY = 'automation.node';
 const STATUS_KEY = 'automation.status';
@@ -185,7 +201,7 @@ async function models(force = false): Promise<ModelOption[]> {
 }
 
 async function diagnostics(): Promise<Diagnostics> {
-  const [chatgptState, gmailState, clientId, p] = await Promise.all([chatgpt.state(), gmailAuth.state(), gmailAuth.clientId(), prefs()]);
+  const [chatgptState, gmailState, clientId, p, stored] = await Promise.all([chatgpt.state(), gmailAuth.state(), gmailAuth.clientId(), prefs(), chrome.storage.local.get(WELCOME_KEY)]);
   let list: ModelOption[] | null = null;
   if (chatgptState.kind === 'signed-in') list = await models().catch(() => null);
   return {
@@ -198,11 +214,12 @@ async function diagnostics(): Promise<Diagnostics> {
     prefs: p,
     models: list,
     modelsError: chatgptState.kind === 'signed-in' ? modelsError : null,
+    welcomePending: stored[WELCOME_KEY] === true,
   };
 }
 
 async function panelStatus(): Promise<PanelStatus> {
-  const [chatgptState, gmailState, p] = await Promise.all([chatgpt.state(), gmailAuth.state(), prefs()]);
+  const [chatgptState, gmailState, p, stored] = await Promise.all([chatgpt.state(), gmailAuth.state(), prefs(), chrome.storage.local.get(WELCOME_KEY)]);
   let modelName: string | null = null;
   if (chatgptState.kind === 'signed-in') {
     const list = await models().catch(() => [] as ModelOption[]);
@@ -214,6 +231,7 @@ async function panelStatus(): Promise<PanelStatus> {
     gmailEmail: gmailState.kind === 'signed-in' ? gmailState.email : null,
     smartEnter: p.smartEnter,
     modelName,
+    welcome: stored[WELCOME_KEY] === true && chatgptState.kind === 'signed-in' && gmailState.kind === 'signed-in',
   };
 }
 
@@ -224,6 +242,8 @@ async function handle(request: Request, sender: chrome.runtime.MessageSender): P
   switch (request.type) {
     case 'status/get':
       return { ok: true, data: await panelStatus() };
+    case 'welcome/claim':
+      return { ok: true, data: await claimWelcome() };
     case 'options/open': {
       const tab = OPTIONS_TABS.find((t) => t === request.tab);
       await chrome.tabs.create({ url: chrome.runtime.getURL(`options.html${tab ? `#${tab}` : ''}`) });
@@ -462,7 +482,11 @@ void ensureAlarm();
 
 chrome.runtime.onInstalled.addListener((details) => {
   void lockTokenStorage();
-  if (details.reason === 'install') void chrome.runtime.openOptionsPage();
+  if (details.reason === 'install') {
+    // Once setup is done, the first Gmail tab the user looks at asks "What can you do?" for them.
+    void chrome.storage.local.set({ [WELCOME_KEY]: true });
+    void chrome.runtime.openOptionsPage();
+  }
 });
 chrome.runtime.onStartup.addListener(() => void lockTokenStorage());
 chrome.action.onClicked.addListener(() => void chrome.runtime.openOptionsPage());

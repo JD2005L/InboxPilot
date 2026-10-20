@@ -103,6 +103,7 @@
     prefs: { model: '', effort: 'low', maxResults: 15, smartEnter: true },
     models,
     modelsError: null,
+    welcomePending: false,
   };
 
   try {

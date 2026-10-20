@@ -32,7 +32,12 @@ export interface PanelStatus {
   gmailEmail: string | null;
   smartEnter: boolean;
   modelName: string | null;
+  /** Freshly installed and just set up: the first Gmail tab the user looks at introduces Inbox Pilot (once). */
+  welcome: boolean;
 }
+
+/** What the first Gmail tab asks after setup, so the user's first answer is a tour of what Inbox Pilot can do. */
+export const WELCOME_QUESTION = 'What can you do?';
 
 export interface Diagnostics {
   version: string;
@@ -46,10 +51,16 @@ export interface Diagnostics {
   /** null: not loaded yet (or not signed in to ChatGPT). */
   models: ModelOption[] | null;
   modelsError: string | null;
+  /** The first Gmail tab after setup will still introduce Inbox Pilot. */
+  welcomePending: boolean;
 }
 
 /** Requests any extension context may send, including the content script on mail.google.com. */
-export type PublicRequest = { type: 'status/get' } | { type: 'options/open'; tab?: OptionsTab };
+export type PublicRequest =
+  | { type: 'status/get' }
+  | { type: 'options/open'; tab?: OptionsTab }
+  /** A Gmail tab asks to be the one that introduces Inbox Pilot; true for exactly one tab, once. */
+  | { type: 'welcome/claim' };
 
 /** Requests only extension pages (the options page) may send. */
 export type PrivilegedRequest =

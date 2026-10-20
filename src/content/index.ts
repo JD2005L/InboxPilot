@@ -1,5 +1,5 @@
 import { h, icon } from '../shared/dom';
-import { CHAT_PORT, isBroadcast, type OpenEmail, type OptionsTab, type PanelStatus, type Request, type Response } from '../shared/messages';
+import { CHAT_PORT, isBroadcast, WELCOME_QUESTION, type OpenEmail, type OptionsTab, type PanelStatus, type Request, type Response } from '../shared/messages';
 import { ChatPanel } from './panel';
 import { findSearch, SearchBar } from './searchBar';
 import { BUTTON_CSS } from './styles';
@@ -34,6 +34,17 @@ async function loadStatus(): Promise<void> {
   status = await send<PanelStatus>({ type: 'status/get' });
   searchBar.refresh();
   if (panel.isOpen) panel.refresh();
+  void welcome();
+}
+
+/**
+ * Right after setup, the first Gmail tab the user is looking at opens the panel and asks "What can you do?", so the
+ * first answer they see is a tour of Inbox Pilot (and proof that everything is connected). A tab in the background
+ * waits until it is shown; the background lets only one tab do it, once.
+ */
+async function welcome(): Promise<void> {
+  if (!status?.welcome || document.visibilityState !== 'visible' || panel.isOpen) return;
+  if (await send<boolean>({ type: 'welcome/claim' })) panel.open(WELCOME_QUESTION);
 }
 
 /**
@@ -165,6 +176,8 @@ chrome.runtime.onMessage.addListener((message: unknown) => {
 window.addEventListener('hashchange', () => {
   if (panel.isOpen) setTimeout(() => panel.refresh(), 600);
 });
+
+document.addEventListener('visibilitychange', () => void welcome());
 
 searchBar.start();
 void loadStatus();

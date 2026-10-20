@@ -538,6 +538,9 @@ function problemFix(d: Diagnostics, fix: Problem['fix']): HTMLElement | null {
 function doneStage(d: Diagnostics): (Node | string)[] {
   return [
     h('p', { className: 'ok' }, `Ready. Questions are answered from ${d.gmail.kind === 'signed-in' ? d.gmail.email : 'your Gmail'} by ChatGPT.`),
+    ...(d.welcomePending
+      ? [h('p', { className: 'fix' }, h('strong', {}, 'First stop: Gmail. '), 'Open it and Inbox Pilot introduces itself: it asks ChatGPT ', ui('What can you do?'), ' for you, which also confirms everything is connected. Ask the same any time.')]
+      : []),
     ...(d.gmail.kind === 'signed-in' && !d.gmail.canModify
       ? [
           h(
