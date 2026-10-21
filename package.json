@@ -1,6 +1,6 @@
 {
   "name": "inbox-pilot",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "private": true,
   "license": "GPL-3.0-only",
   "description": "Chrome MV3 extension that turns Gmail's search bar into a chat with your mailbox, answered by your own ChatGPT subscription.",

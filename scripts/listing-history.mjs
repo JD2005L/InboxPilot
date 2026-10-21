@@ -11,12 +11,15 @@ const ALWAYS_NEW = '1-upload-this.zip';
 const IMAGE = /\.png$/i;
 /**
  * Thumbnail size and how different two must be to count as a changed image (0-255 gray levels): re-renders of the
- * same screen differ by up to ~30 in a few cells (font hinting, antialiasing); a real change moves the average or
- * repaints whole cells.
+ * same screen differ by up to ~30 in a few cells (font hinting, antialiasing); a real change moves the average,
+ * repaints whole cells, or shifts many cells a little (a small badge in a corner touched ~20-30 cells by more than
+ * 16, where re-render noise touched at most 3).
  */
 export const THUMB = { width: 64, height: 40 };
 const BIG_CELL = 64;
 const MAX_BIG_CELLS = 2;
+const SOME_CELL = 16;
+const MAX_SOME_CELLS = 8;
 const MAX_MEAN = 2;
 
 export const fieldKey = (tab, label) => `${tab} › ${label}`;
@@ -103,12 +106,14 @@ function sameImage(a64, b64) {
   if (a.length !== b.length) return false;
   let total = 0;
   let big = 0;
+  let some = 0;
   for (let i = 0; i < a.length; i++) {
     const d = Math.abs(a[i] - b[i]);
     if (d > BIG_CELL) big++;
+    if (d > SOME_CELL) some++;
     total += d;
   }
-  return big <= MAX_BIG_CELLS && total / a.length <= MAX_MEAN;
+  return big <= MAX_BIG_CELLS && some <= MAX_SOME_CELLS && total / a.length <= MAX_MEAN;
 }
 
 function sameFile(path, a, b) {
