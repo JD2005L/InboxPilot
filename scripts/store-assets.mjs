@@ -9,7 +9,7 @@
 //     images/promo-tile-440x280.png  small promo tile
 //     images/marquee-1400x560.png    marquee promo tile
 //     images/screenshots/            five 1280x800 screenshots
-// The screenshots run the real, built content script and settings page on a mock Gmail of made-up emails
+// The screenshots run the real, built content script on a mock Gmail of made-up emails
 // (store/mock-gmail.html), with ChatGPT and the Gmail API replaced by scripted scenes (store/stub.js).
 // Run through `npm run package`, after the store build.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
@@ -54,17 +54,31 @@ async function serve(context) {
   });
 }
 
+/**
+ * A page that throws while loading still screenshots fine, just as the wrong picture (1.4.0 and 1.5.0 shipped a
+ * settings page stuck on "Loading…" because the stub lacked chrome.permissions). Any page error fails the run instead.
+ */
+const pageErrors = [];
+function watch(page) {
+  page.on('pageerror', (error) => pageErrors.push(`${page.url()}: ${error.message}`));
+  return page;
+}
+function assertNoPageErrors() {
+  if (pageErrors.length) throw new Error(`Store screenshots: the page threw, so the pictures are wrong:\n${pageErrors.join('\n')}`);
+}
+
 const browser = await chromium.launch();
 try {
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1, colorScheme: 'light' });
   await serve(context);
-  const page = await context.newPage();
+  const page = watch(await context.newPage());
 
   const scenes = [
     ['ask', SCREENSHOTS[0]],
     ['attachment', SCREENSHOTS[1]],
     ['organize', SCREENSHOTS[2]],
     ['draft', SCREENSHOTS[3]],
+    ['rule', SCREENSHOTS[4]],
   ];
   for (const [scene, file] of scenes) {
     await page.goto(`${ORIGIN}/mock-gmail.html?scene=${scene}`);
@@ -83,13 +97,7 @@ try {
     await page.screenshot({ path: join(out, 'images', 'screenshots', file) });
   }
 
-  const settings = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1, colorScheme: 'dark' });
-  await serve(settings);
-  const options = await settings.newPage();
-  await options.goto(`${ORIGIN}/options.html`);
-  await options.waitForTimeout(1200);
-  await options.screenshot({ path: join(out, 'images', 'screenshots', SCREENSHOTS[4]) });
-  await settings.close();
+  assertNoPageErrors();
 
   // Promo tiles: the mark, the name, and what it is, on Inbox Pilot's sky gradient.
   const logo = renderIcon(256).toString('base64');

@@ -53,6 +53,27 @@
         text: 'I saved a reply to Priya as a draft and opened it in Gmail for you to review and send:\n\n> Hi Priya,\n>\n> Thursday afternoon works well for me. 2 PM would be ideal if that suits the team. Happy to present the reporting dashboard; I\'ll keep it to 45 minutes with time for questions.\n>\n> Thanks,\n> Alex\n\nNothing has been sent.',
       },
     ],
+    rule: [
+      { type: 'step', kind: 'search', label: 'from:maplecreek.example newer_than:14d' },
+      {
+        type: 'rule-proposal',
+        id: 'store-rule',
+        mode: 'create',
+        rule: {
+          id: 'store-rule',
+          name: 'School needs something from me',
+          enabled: true,
+          trigger: { kind: 'schedule', everyMinutes: 60 },
+          query: 'from:maplecreek.example',
+          test: 'Does this email ask a parent to do, sign, pay or reply to something?',
+          actions: [{ kind: 'label', label: 'School' }, { kind: 'star' }, { kind: 'webhook', destination: 'phone' }],
+          dailyLimit: 100,
+        },
+        summary: 'Every hour, checks new school emails and pings your phone when one needs you.',
+        destinations: [{ id: 'phone', name: 'My phone (ntfy)', url: 'https://ntfy.sh/alex-alerts', format: 'ntfy', includeBody: false }],
+      },
+      { text: "Here's the rule. Every hour it looks at new emails from **Maple Creek School**, and ChatGPT checks whether each one asks you to do something. Those get the **School** label, a star, and a ping on **My phone**. Press **Create rule** to turn it on; you can pause, change or delete it any time in settings." },
+    ],
   };
 
   const QUESTIONS = {
@@ -60,6 +81,7 @@
     attachment: "How much is the plumber's invoice and when is it due?",
     organize: 'Archive the promotions older than two weeks',
     draft: 'Draft a reply saying Thursday at 2 works',
+    rule: 'Every hour, check the school emails and ping my phone if they need something from me',
   };
   window.__storeQuestion = QUESTIONS[scene];
 
@@ -115,9 +137,19 @@
 
   window.chrome = {
     storage: { sync: { get: async () => ({}), set: async () => undefined } },
+    // Nothing optional granted: the settings page lists only what the extension always has.
+    permissions: {
+      getAll: async () => ({ permissions: [], origins: [] }),
+      contains: async () => false,
+      request: async () => false,
+      remove: async () => true,
+      onAdded: { addListener() {} },
+      onRemoved: { addListener() {} },
+    },
     runtime: {
       id: 'store',
       getURL: (path) => `${location.origin}/${path}`,
+      getManifest: () => ({ host_permissions: [], content_scripts: [] }),
       onMessage: { addListener() {} },
       connect: port,
       sendMessage: async (request) => {

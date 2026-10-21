@@ -11,7 +11,7 @@
 // Public pages on levac.net: the product page and privacy policy the store listing links to.
 export const SITE = 'https://levac.net/inbox-pilot/';
 
-export const SCREENSHOTS = ['1-ask-from-search.png', '2-attachments.png', '3-organize.png', '4-draft-reply.png', '5-setup.png'];
+export const SCREENSHOTS = ['1-ask-from-search.png', '2-attachments.png', '3-organize.png', '4-draft-reply.png', '5-scheduled-rule.png'];
 
 const DESCRIPTION = `Inbox Pilot puts ChatGPT at the controls of your Gmail. Type a question into Gmail's search bar and press Enter: ChatGPT searches your mailbox, reads what it needs (attachments included), answers with links to the exact emails, drafts replies, tidies your inbox, and puts what matters on your calendar when you ask. It runs on your own ChatGPT plan, not on an API key, and it is not Gmail's built-in "Ask Gmail".
 
