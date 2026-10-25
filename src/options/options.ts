@@ -522,6 +522,8 @@ function problemFix(d: Diagnostics, fix: Problem['fix']): HTMLElement | null {
       );
     case 'sync-scope':
       return box(h('p', {}, 'Click ', ui('Turn on sync'), ' again. On Google’s permission screen, tick ', ui('See, create, and delete its own configuration data in your Google Drive'), ' before clicking Continue.'));
+    case 'filters-scope':
+      return box(h('p', {}, 'Click ', ui('Allow'), ' next to Gmail filters again. On Google’s permission screen, tick ', ui('See, edit, create, or change your email settings and filters in Gmail'), ' before clicking Continue.'));
     case 'calendar-scope':
       return box(h('p', {}, 'Click ', ui('Connect Calendar'), ' again. On Google’s permission screen, tick ', ui('View and edit events on all your calendars'), ' before clicking Continue.'));
     case 'google-scope':
@@ -672,6 +674,13 @@ function connectionsCard(d: Diagnostics): HTMLElement {
             signedIn.canModify ? dropGoogle('modify', 'drafts & organizing') : button('Allow', () => void act({ type: 'gmail/connect', modify: true }, undefined, 'gmail-upgrade'), 'primary', 'gmail-upgrade'),
           ),
           ...calendarRow(d, signedIn),
+          permRow(
+            'filter',
+            'Gmail filters',
+            signedIn.canFilters ? 'Allowed · sees your filters, and creates or deletes them only after you confirm' : 'Off · Inbox Pilot uses rules only, even where a filter would do',
+            signedIn.canFilters ? dropGoogle('filters', 'Gmail filter management') : button('Allow', () => void act({ type: 'gmail/connect', filters: true }, undefined, 'filters-connect'), 'primary', 'filters-connect'),
+          ),
+          ...(signedIn.filtersProblem ? problemBlock(d, signedIn.filtersProblem) : []),
           permRow(
             'sync',
             'Rule sync (Google Drive)',

@@ -5,10 +5,10 @@ import { currentSubstep, parseWizard, setupStep } from '../src/options/setup';
 describe('setupStep', () => {
   const signedIn = { kind: 'signed-in' as const, email: 'a@b.c', plan: 'plus' };
   it('walks ChatGPT, then the Google client, then Gmail', () => {
-    expect(setupStep({ chatgpt: { kind: 'signed-out' }, googleClientId: 'x', gmail: { kind: 'signed-in', email: 'a@b.c', canModify: true, canCalendar: false, canSync: false } })).toBe('chatgpt');
+    expect(setupStep({ chatgpt: { kind: 'signed-out' }, googleClientId: 'x', gmail: { kind: 'signed-in', email: 'a@b.c', canModify: true, canCalendar: false, canSync: false, canFilters: false } })).toBe('chatgpt');
     expect(setupStep({ chatgpt: signedIn, googleClientId: '', gmail: { kind: 'no-client' } })).toBe('google');
     expect(setupStep({ chatgpt: signedIn, googleClientId: 'x', gmail: { kind: 'signed-out' } })).toBe('gmail');
-    expect(setupStep({ chatgpt: signedIn, googleClientId: 'x', gmail: { kind: 'signed-in', email: 'a@b.c', canModify: true, canCalendar: false, canSync: false } })).toBe('done');
+    expect(setupStep({ chatgpt: signedIn, googleClientId: 'x', gmail: { kind: 'signed-in', email: 'a@b.c', canModify: true, canCalendar: false, canSync: false, canFilters: false } })).toBe('done');
   });
 });
 

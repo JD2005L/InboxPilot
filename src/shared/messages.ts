@@ -1,4 +1,5 @@
 import type { ChatgptState, ConversationItem, EmailRef, GmailState, ModelOption, Preferences } from './types';
+import type { ChangeDetail, FilterEntry, FilterProposal } from './filters';
 import type { ActivityEntry, AutomationStatus, Destination, Rule, RulesDoc } from './rules';
 import type { EventTimes } from './when';
 
@@ -11,6 +12,11 @@ export interface RulesView {
 }
 
 /** One email from a test run of a rule. */
+/** What the Rules tab shows about Gmail filters. */
+export interface FiltersView {
+  filters: FilterEntry[];
+}
+
 export interface DryRunRow {
   subject: string;
   from: string;
@@ -63,8 +69,8 @@ export type PublicRequest =
   | { type: 'welcome/claim' };
 
 /** The optional parts of the Google sign-in, each of which can be turned off again. */
-export type GoogleAccess = 'modify' | 'calendar' | 'sync';
-export const GOOGLE_ACCESS: readonly GoogleAccess[] = ['modify', 'calendar', 'sync'];
+export type GoogleAccess = 'modify' | 'calendar' | 'sync' | 'filters';
+export const GOOGLE_ACCESS: readonly GoogleAccess[] = ['modify', 'calendar', 'sync', 'filters'];
 
 /** Requests only extension pages (the options page) may send. */
 export type PrivilegedRequest =
@@ -76,8 +82,11 @@ export type PrivilegedRequest =
   | { type: 'chatgpt/signout' }
   | { type: 'models/refresh' }
   | { type: 'google/set-client-id'; clientId: string }
-  /** modify / calendar / sync: also ask for drafts and organizing, Google Calendar access, or rule sync (Drive app data). */
-  | { type: 'gmail/connect'; modify?: boolean; calendar?: boolean; sync?: boolean }
+  /**
+   * modify / calendar / sync / filters: also ask for drafts and organizing, Google Calendar access, rule sync (Drive
+   * app data), or managing Gmail filters.
+   */
+  | { type: 'gmail/connect'; modify?: boolean; calendar?: boolean; sync?: boolean; filters?: boolean }
   /** Turns one optional Google access off again, staying connected for the rest. */
   | { type: 'gmail/drop'; access: GoogleAccess }
   /** "Show me what it can do": the welcome question again, in a Gmail tab brought to the front (or a new one). */
@@ -88,6 +97,9 @@ export type PrivilegedRequest =
   | { type: 'rules/test'; rule: Rule }
   | { type: 'rules/undo'; entryId: string }
   | { type: 'rules/run-now' }
+  /** The user's Gmail filters, for the Rules tab. */
+  | { type: 'filters/list' }
+  | { type: 'filters/delete'; id: string }
   | { type: 'node/rename'; name: string }
   | { type: 'gmail/signout' }
   | { type: 'prefs/set'; prefs: Partial<Preferences> };
@@ -110,6 +122,8 @@ export const PRIVILEGED_TYPES: ReadonlySet<string> = new Set<PrivilegedRequest['
   'rules/test',
   'rules/undo',
   'rules/run-now',
+  'filters/list',
+  'filters/delete',
   'node/rename',
   'gmail/signout',
   'prefs/set',
@@ -148,7 +162,10 @@ export type ChatClientMessage =
   | { type: 'event/add'; proposalId: string }
   /** The user clicked Create on a rule the assistant proposed. */
   | { type: 'rule/create'; proposalId: string }
-  | { type: 'event/undo'; proposalId: string };
+  | { type: 'event/undo'; proposalId: string }
+  /** The user confirmed these changes of a filter proposal (they may have unticked some), or clicked Undo after. */
+  | { type: 'filters/apply'; proposalId: string; changeIds: string[] }
+  | { type: 'filters/undo'; proposalId: string };
 
 export interface OpenEmail {
   threadId: string;
@@ -194,7 +211,7 @@ export type ChatFix = 'chatgpt' | 'gmail' | 'settings';
 
 export type ChatServerMessage =
   /** A step the assistant is taking, e.g. a Gmail search it is running. */
-  | { type: 'step'; kind: 'search' | 'read' | 'attachment' | 'draft' | 'calendar' | 'think'; label: string }
+  | { type: 'step'; kind: 'search' | 'read' | 'attachment' | 'draft' | 'calendar' | 'filters' | 'think'; label: string }
   /** The assistant shows something in Gmail itself: opens a thread or a new draft, or runs a search in Gmail's list. */
   | { type: 'navigate'; target: 'thread' | 'search' | 'draft'; value: string; label: string }
   /** Changes the assistant proposes; nothing happens until the user confirms in the panel. */
@@ -211,6 +228,12 @@ export type ChatServerMessage =
    */
   | { type: 'rule-proposal'; id: string; mode: 'create' | 'update' | 'delete'; rule: Rule; before?: Rule; summary: string; destinations: Destination[] }
   | { type: 'rule-result'; proposalId: string; ok: boolean; message: string }
+  /** Changes to the user's Gmail filters, to confirm; nothing changes until the user clicks. */
+  | { type: 'filter-proposal'; proposal: FilterProposal; details?: Map<string, ChangeDetail> }
+  /** The outcome of applying a filter proposal, or of its Undo. */
+  | { type: 'filter-result'; proposalId: string; ok: boolean; undone: boolean; message: string }
+  /** The answer needs an access the user has not allowed yet: the panel offers the way to allow it. */
+  | { type: 'needs'; access: 'filters' }
   | { type: 'delta'; text: string }
   | { type: 'email'; email: EmailRef }
   | { type: 'done'; items: ConversationItem[]; text: string }

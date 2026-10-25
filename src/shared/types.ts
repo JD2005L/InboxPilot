@@ -2,7 +2,7 @@
 export interface Problem {
   message: string;
   /** Points the settings page at the instructions that fix it. */
-  fix?: 'enable-device-code' | 'workspace-admin' | 'google-client' | 'google-scope' | 'google-test-user' | 'google-api-disabled' | 'calendar-api-disabled' | 'calendar-scope' | 'sync-api-disabled' | 'sync-scope';
+  fix?: 'enable-device-code' | 'workspace-admin' | 'google-client' | 'google-scope' | 'google-test-user' | 'google-api-disabled' | 'calendar-api-disabled' | 'calendar-scope' | 'sync-api-disabled' | 'sync-scope' | 'filters-scope';
 }
 
 export type ChatgptState =
@@ -22,8 +22,9 @@ export type GmailState =
    * canCalendar: Google Calendar events can be read and added (calendar.events granted). Optional, added later.
    * calendarProblem: what went wrong the last time the user tried to connect Calendar.
    * canSync / syncProblem: the same for rule sync (Drive app data).
+   * canFilters / filtersProblem: the same for managing Gmail filters (gmail.settings.basic).
    */
-  | { kind: 'signed-in'; email: string; canModify: boolean; canCalendar: boolean; calendarProblem?: Problem; canSync: boolean; syncProblem?: Problem };
+  | { kind: 'signed-in'; email: string; canModify: boolean; canCalendar: boolean; calendarProblem?: Problem; canSync: boolean; syncProblem?: Problem; canFilters: boolean; filtersProblem?: Problem };
 
 export const EFFORTS = ['low', 'medium', 'high'] as const;
 export type Effort = (typeof EFFORTS)[number];

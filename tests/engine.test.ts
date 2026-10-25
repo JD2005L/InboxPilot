@@ -34,7 +34,7 @@ function engineWith(turns: Turn[], gmail: Partial<GmailApi> = {}) {
     }),
   } as unknown as ChatgptClient;
   const api = { search: vi.fn().mockResolvedValue([hit]), thread: vi.fn().mockResolvedValue([hit]), ...gmail } as unknown as GmailApi;
-  const engine = new ChatEngine({ client, gmail: api, prefs: () => Promise.resolve(DEFAULT_PREFERENCES), models: () => Promise.resolve(MODELS), gmailEmail: () => Promise.resolve('me@example.com'), canModify: () => Promise.resolve(true), calendar: {} as CalendarApi, canCalendar: () => Promise.resolve(false), readPdf: () => Promise.resolve(''), rules: () => Promise.resolve({ rules: [], destinations: [] }) });
+  const engine = new ChatEngine({ client, gmail: api, prefs: () => Promise.resolve(DEFAULT_PREFERENCES), models: () => Promise.resolve(MODELS), gmailEmail: () => Promise.resolve('me@example.com'), canModify: () => Promise.resolve(true), calendar: {} as CalendarApi, canCalendar: () => Promise.resolve(false), canFilters: () => Promise.resolve(false), readPdf: () => Promise.resolve(''), rules: () => Promise.resolve({ rules: [], destinations: [] }) });
   return { engine, requests, api };
 }
 

@@ -237,7 +237,7 @@ describe('RuleRunner', () => {
   });
 });
 
-async function proposeWith(args: Record<string, unknown>, tool = 'propose_rule') {
+async function proposeWith(args: Record<string, unknown>, tool = 'propose_rule', canFilters = false) {
   const { ChatEngine } = await import('../src/background/chat/engine');
   const outputs: string[] = [];
   const turns = [
@@ -257,6 +257,7 @@ async function proposeWith(args: Record<string, unknown>, tool = 'propose_rule')
     gmail: {} as never,
     calendar: {} as never,
     canCalendar: () => Promise.resolve(false),
+    canFilters: () => Promise.resolve(canFilters),
     prefs: () => Promise.resolve({ model: '', effort: 'low', maxResults: 15, smartEnter: true }),
     models: () => Promise.resolve([{ slug: 'm', name: 'M', description: '', efforts: [] }]),
     gmailEmail: () => Promise.resolve('me@example.com'),
@@ -286,6 +287,30 @@ describe('propose_rule from chat', () => {
     const { out, output } = await propose({ name: 'x', actions: [{ kind: 'webhook', destination: 'https://evil.example/hook' }], summary: 's' });
     expect(output.error).toBe('destination must be one of: Phone');
     expect(out.some((m) => (m as { type: string }).type === 'rule-proposal')).toBe(false);
+  });
+});
+
+describe('filters before rules', () => {
+  const labelOnly = { name: 'Amazon', gmail_filter: 'from:amazon.com', actions: [{ kind: 'label', label: 'Shopping' }, { kind: 'archive' }], summary: 's' };
+
+  it('turns a rule that needs no AI into a Gmail filter instead', async () => {
+    const { out, output } = await proposeWith(labelOnly, 'propose_rule', true);
+    expect(String(output.error)).toMatch(/propose_filter_changes/);
+    expect(out.some((m) => (m as { type: string }).type === 'rule-proposal')).toBe(false);
+  });
+
+  it('asks for filter access rather than falling back to a rule', async () => {
+    const { out, output } = await proposeWith(labelOnly, 'propose_rule', false);
+    expect(String(output.error)).toMatch(/Gmail filters, Allow/);
+    expect(out).toContainEqual({ type: 'needs', access: 'filters' });
+  });
+
+  it('keeps rules for what needs AI, a schedule or a notification', async () => {
+    expect((await proposeWith({ ...labelOnly, question: 'Is this an order that shipped?' }, 'propose_rule', true)).output).toMatchObject({ proposed: true });
+    expect((await proposeWith({ ...labelOnly, every_minutes: 1440 }, 'propose_rule', true)).output).toMatchObject({ proposed: true });
+    expect((await proposeWith({ ...labelOnly, actions: [{ kind: 'notify' }] }, 'propose_rule', true)).output).toMatchObject({ proposed: true });
+    // Pausing an existing rule is never blocked.
+    expect((await proposeWith({ rule_id: 'r1', enabled: false, summary: 's' }, 'propose_rule', true)).output).toMatchObject({ proposed: true });
   });
 });
 

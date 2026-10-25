@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CALENDAR_SCOPE, GMAIL_SCOPE, GmailAuth, MODIFY_SCOPE, SYNC_SCOPE } from '../src/background/gmail/auth';
+import { CALENDAR_SCOPE, FILTERS_SCOPE, GMAIL_SCOPE, GmailAuth, MODIFY_SCOPE, SYNC_SCOPE } from '../src/background/gmail/auth';
 
 /** chrome.storage.StorageArea, in memory: just get/set/remove. */
 function area(): chrome.storage.StorageArea {
@@ -73,5 +73,21 @@ describe('turning Google access off again', () => {
     await auth.connect();
     expect(asked[0]).toEqual([GMAIL_SCOPE, MODIFY_SCOPE]);
     expect(await auth.state()).toMatchObject({ kind: 'signed-in', canModify: false });
+  });
+
+  it('asks for filter management only when allowed, keeps it on renewals, and says when the box was left unticked', async () => {
+    const { auth, asked } = setup();
+    await auth.connect();
+    expect(asked[0]).not.toContain(FILTERS_SCOPE);
+    await auth.connect({ filters: true });
+    expect(asked.at(-1)).toEqual([GMAIL_SCOPE, MODIFY_SCOPE, FILTERS_SCOPE]);
+    expect(await auth.canFilters()).toBe(true);
+    await auth.drop('filters');
+    expect(asked.at(-1)).toEqual([GMAIL_SCOPE, MODIFY_SCOPE]);
+    expect(await auth.canFilters()).toBe(false);
+
+    const unticked = setup([FILTERS_SCOPE]);
+    await unticked.auth.connect({ filters: true });
+    expect(await unticked.auth.state()).toMatchObject({ kind: 'signed-in', canFilters: false, filtersProblem: { fix: 'filters-scope' } });
   });
 });

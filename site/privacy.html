@@ -27,8 +27,8 @@
   <main>
     <p class="label">// Privacy policy</p>
     <h1>Privacy policy: Inbox Pilot</h1>
-    <p><em>Last updated: 2026-10-20</em></p>
-    <p class="lead">Inbox Pilot is a Chrome extension that lets you ask ChatGPT about your Gmail from Gmail's search bar, and have it find, read, draft and organize your mail, add events to your Google Calendar, and run mail rules you set up. It runs on your own ChatGPT account and reads Gmail (and, if you connect it, Google Calendar) through a Google app that you create and own. This policy explains what it handles and where that data goes.</p>
+    <p><em>Last updated: 2026-10-24</em></p>
+    <p class="lead">Inbox Pilot is a Chrome extension that lets you ask ChatGPT about your Gmail from Gmail's search bar, and have it find, read, draft and organize your mail, manage your Gmail filters, add events to your Google Calendar, and run mail rules you set up. It runs on your own ChatGPT account and reads Gmail (and, if you connect it, Google Calendar) through a Google app that you create and own. This policy explains what it handles and where that data goes.</p>
     <p class="lead"><strong>In short:</strong> Inbox Pilot has no server. The developer never receives, stores or sees your email, your questions, the answers, or any sign-in token. The extension talks only to Google (your Gmail and Calendar) and OpenAI (your ChatGPT account). Its source code is public, so this can be checked.</p>
 
     <section>
@@ -38,6 +38,7 @@
         <tbody>
           <tr><td>Email messages, threads and attachments</td><td>The Gmail API, through your own Google app, <strong>only when you ask a question</strong></td><td>To find and read what answers your question.</td></tr>
           <tr><td>Calendar events on your primary calendar, for the days asked about (title, time, location)</td><td>The Google Calendar API, only if you connect Calendar, and only when a question needs your schedule</td><td>To answer what is on your calendar, whether you are free, or whether something clashes.</td></tr>
+          <tr><td>Your Gmail filters and label names</td><td>The Gmail API, only if you allow Gmail filters, and only when a question is about filters or proposes one</td><td>To show, review and change your filters when you ask.</td></tr>
           <tr><td>Your Gmail address</td><td>The Gmail API, after you connect</td><td>To show which account is connected, to address drafts, and to open emails in the right account.</td></tr>
           <tr><td>Your ChatGPT account email and plan</td><td>OpenAI's sign-in, after you connect</td><td>To show which ChatGPT account is connected.</td></tr>
           <tr><td>Google and ChatGPT sign-in tokens</td><td>The sign-ins you start on the settings page</td><td>To use Gmail and ChatGPT on your behalf.</td></tr>
@@ -54,6 +55,7 @@
         <li><p><strong>Drafts:</strong> it saves draft emails and opens them for you to review. It has no way to send email.</p></li>
         <li><p><strong>Organizing:</strong> archive, mark read or unread, star, add or remove labels, move to the inbox, or move to Trash (recoverable for 30 days). It always shows you the list of conversations first and changes nothing until you press Confirm; Undo reverses it. It cannot delete anything permanently.</p></li>
         <li><p><strong>Unsubscribe:</strong> it only shows each sender's own unsubscribe link for you to open.</p></li>
+        <li><p><strong>Filters</strong> (only if you allow Gmail filters, a separate permission): it creates, replaces or deletes Gmail filters only after you tick and confirm each change, and Undo puts them back. A change can also apply a new filter to mail you already have; the card shows how many emails first. It never sets up forwarding. Google's permission for filters also covers basic settings such as your vacation reply; Inbox Pilot never reads or changes those.</p></li>
       </ul>
     </section>
 
@@ -81,6 +83,8 @@
           <tr><td>Gmail searches, and the messages and attachments needed to answer</td><td>Google (Gmail API), then OpenAI</td><td>To find what answers your question, and for ChatGPT to write the answer.</td></tr>
           <tr><td>Your question and the conversation so far</td><td>OpenAI (your ChatGPT account)</td><td>To answer it. Requests are sent with storage off (<code>store: false</code>); OpenAI's handling is governed by your ChatGPT account's terms and data controls.</td></tr>
           <tr><td>Drafts and confirmed organizing changes</td><td>Google (Gmail API)</td><td>To save the draft or apply the change you confirmed.</td></tr>
+          <tr><td>Your filters (conditions and actions) and label names, if you allow Gmail filters</td><td>Google (Gmail API), then OpenAI</td><td>For ChatGPT to review them or propose changes when you ask.</td></tr>
+          <tr><td>Filter changes you confirmed</td><td>Google (Gmail API)</td><td>To create or delete exactly those filters.</td></tr>
           <tr><td>Calendar events you asked about</td><td>Google (Calendar API), then OpenAI</td><td>For ChatGPT to answer questions about your schedule.</td></tr>
           <tr><td>Events you clicked Add on</td><td>Google (Calendar API)</td><td>To add them to your calendar.</td></tr>
           <tr><td>Emails a rule with a question looks at</td><td>Google (Gmail API), then OpenAI</td><td>For ChatGPT to answer the rule's question.</td></tr>

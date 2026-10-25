@@ -128,6 +128,7 @@ function engineWith(turns: Turn[], canCalendar: boolean) {
     client,
     gmail,
     calendar,
+    canFilters: () => Promise.resolve(false),
     canCalendar: () => Promise.resolve(canCalendar),
     prefs: () => Promise.resolve(DEFAULT_PREFERENCES),
     models: () => Promise.resolve([{ slug: 'best', name: 'Best', description: '', efforts: ['low'] }]),

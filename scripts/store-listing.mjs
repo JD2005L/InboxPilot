@@ -23,6 +23,7 @@ WHAT YOU CAN ASK
 • "Archive the promotions older than two weeks" (shows you the list first; you confirm, and can undo)
 • "Show me everything from the school this month" (runs the search in Gmail for you)
 • "Put my flights for the Toronto trip in my calendar" (shows each event first; nothing is added until you click Add)
+• "Review my Gmail filters and clean them up" (merges, fixes and removes, as changes you tick and confirm)
 • "Whenever the school emails, send a summary to my phone" (sets up a rule you review and confirm)
 
 HOW IT FITS INTO GMAIL
@@ -36,7 +37,8 @@ WHAT IT CAN DO
 • Draft: replies threaded into the conversation, or new emails. Drafts only: Inbox Pilot has no way to send.
 • Organize: ask it to tidy up and it proposes the change, showing you exactly which conversations it would touch. Nothing happens until you confirm, and Undo puts everything back. Anything moved to Trash stays recoverable for 30 days.
 • Calendar (optional): it turns bookings and appointments in your email into events, with the right times even when a flight crosses time zones, and checks your schedule for clashes. You approve each event before it is added; nobody is invited.
-• Rules (optional): automations you approve once, such as starring anything you would regret missing and sending a note to your phone, or filing receipts under a label as they arrive. Each rule pairs a Gmail search with an optional yes or no question for ChatGPT, and does only what you chose. Mail that arrives while your computer is off is handled when it is back. Rules sync between your computers, and only one of them runs them at a time. Every action is logged, with Undo.
+• Gmail filters (optional): it sees your filters and creates, edits, merges or deletes them when you ask, always as a list of changes you tick and confirm, with Undo. "Review my filters" finds duplicates, filters that belong together, labels that no longer exist and filters that have not matched anything in a year. Anything that needs no AI, such as filing a sender's mail under a label, becomes a filter, which Gmail runs itself even with your computer off.
+• Rules (optional): for what needs ChatGPT's judgment or reaches beyond Gmail, such as starring anything you would regret missing and sending a note to your phone. Each rule pairs a Gmail search with an optional yes or no question for ChatGPT, and does only what you chose. Mail that arrives while your computer is off is handled when it is back. Rules sync between your computers, and only one of them runs them at a time. Every action is logged, with Undo.
 
 PRIVATE BY DESIGN
 • No Inbox Pilot server. It talks only to Google (Gmail, and Calendar if you connect it) and OpenAI (your ChatGPT account). The developer never sees your mail, questions or tokens.
@@ -58,7 +60,7 @@ const TEST_INSTRUCTIONS = `Uses the reviewer's own ChatGPT (Plus or higher) and 
 1. Click the toolbar icon: settings walks through connecting ChatGPT (device code) and creating a free Google OAuth client, then Connect Gmail.
 2. Open Gmail: the panel asks "What can you do?" for a tour.
 3. Type a question in Gmail's search bar, press Enter. Changes always wait for Confirm.
-Full steps (Calendar, Rules): https://github.com/JD2005L/InboxPilot/blob/main/TESTING.md`;
+Full steps (Calendar, Filters, Rules): https://github.com/JD2005L/InboxPilot/blob/main/TESTING.md`;
 
 export function storeListing(version) {
   return [
@@ -101,7 +103,7 @@ export function storeListing(version) {
           kind: 'text',
           limit: 1000,
           value:
-            "Lets the user ask ChatGPT, through their own ChatGPT account, to find, read, draft and organize their Gmail, from Gmail's search bar: it answers questions about their mail with links to the emails, reads attachments, saves draft replies, organizes conversations and adds calendar events only after the user confirms, and runs mail rules the user set up in advance.",
+            "Lets the user ask ChatGPT, through their own ChatGPT account, to find, read, draft and organize their Gmail, from Gmail's search bar: it answers questions about their mail with links to the emails, reads attachments, saves draft replies, organizes conversations, changes Gmail filters and adds calendar events only after the user confirms, and runs mail rules the user set up in advance.",
         },
         {
           label: 'storage justification',
@@ -117,7 +119,7 @@ export function storeListing(version) {
           kind: 'text',
           limit: 1000,
           value:
-            "chrome.identity.launchWebAuthFlow signs the user in to Google with the OAuth client they created in their own Google Cloud project, to get a Gmail API access token (read, and modify for drafts and organizing; plus Google Calendar events if the user chooses to connect Calendar), and silently renews that token while they stay signed in. getRedirectURL provides the redirect URI the setup guide asks the user to register on that client. chrome.identity.getAuthToken is not used, because the client ID is the user's own and cannot be in the manifest.",
+            "chrome.identity.launchWebAuthFlow signs the user in to Google with the OAuth client they created in their own Google Cloud project, to get a Gmail API access token (read, and modify for drafts and organizing; plus Gmail filter settings and Google Calendar events if the user chooses to allow them), and silently renews that token while they stay signed in. getRedirectURL provides the redirect URI the setup guide asks the user to register on that client. chrome.identity.getAuthToken is not used, because the client ID is the user's own and cannot be in the manifest.",
         },
         {
           label: 'offscreen justification',

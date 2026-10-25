@@ -1,8 +1,9 @@
 import type { FetchLike } from '../chatgpt/deviceAuth';
 import { GmailAuthError, type GmailAuth } from './auth';
+import type { GmailFilter } from '../../shared/filters';
 import type { GmailMessage } from './message';
 
-/** Read-only Gmail API calls the assistant's tools make. */
+/** The Gmail API calls the assistant's tools, the rules and the filter manager make. */
 
 export class GmailApiError extends Error {
   constructor(
@@ -48,6 +49,69 @@ export class GmailApi {
     const params = new URLSearchParams({ q: query, maxResults: String(max) });
     const list = (await this.get(`users/me/messages?${params.toString()}`, signal)) as { messages?: { id: string; threadId: string }[] };
     return (list.messages ?? []).slice(0, max);
+  }
+
+  /**
+   * Message IDs (with their threads) matching a search, newest first, up to `max` across pages. With `labelIds`,
+   * only messages that also carry every one of those labels.
+   */
+  async listIds(query: string, max: number, signal: AbortSignal, labelIds: string[] = []): Promise<{ ids: { id: string; threadId: string }[]; more: boolean }> {
+    const ids: { id: string; threadId: string }[] = [];
+    let pageToken = '';
+    do {
+      const params = new URLSearchParams({ q: query, maxResults: String(Math.min(500, max - ids.length)) });
+      for (const id of labelIds) params.append('labelIds', id);
+      if (pageToken) params.set('pageToken', pageToken);
+      const list = (await this.get(`users/me/messages?${params.toString()}`, signal)) as { messages?: { id: string; threadId: string }[]; nextPageToken?: string };
+      ids.push(...(list.messages ?? []));
+      pageToken = list.nextPageToken ?? '';
+    } while (pageToken && ids.length < max);
+    return { ids: ids.slice(0, max), more: !!pageToken || ids.length > max };
+  }
+
+  /** When a message arrived (cheap: no headers or body). */
+  async messageDate(messageId: string, signal: AbortSignal): Promise<number | null> {
+    const body = (await this.get(`users/me/messages/${encodeURIComponent(messageId)}?format=minimal`, signal)) as { internalDate?: string };
+    const at = Number(body.internalDate);
+    return Number.isFinite(at) && at > 0 ? at : null;
+  }
+
+  /** Adds and removes labels on up to 1000 messages at once. */
+  async batchModify(ids: string[], add: string[], remove: string[], signal: AbortSignal): Promise<void> {
+    for (let i = 0; i < ids.length; i += 1000) {
+      await this.send('POST', 'users/me/messages/batchModify', { ids: ids.slice(i, i + 1000), addLabelIds: add, removeLabelIds: remove }, signal);
+    }
+  }
+
+  async trashMessage(messageId: string, signal: AbortSignal): Promise<void> {
+    await this.send('POST', `users/me/messages/${encodeURIComponent(messageId)}/trash`, undefined, signal);
+  }
+
+  async untrashMessage(messageId: string, signal: AbortSignal): Promise<void> {
+    await this.send('POST', `users/me/messages/${encodeURIComponent(messageId)}/untrash`, undefined, signal);
+  }
+
+  /** The user's Gmail filters, as Gmail's settings list them. */
+  async filters(signal: AbortSignal): Promise<GmailFilter[]> {
+    const body = (await this.get('users/me/settings/filters', signal)) as { filter?: GmailFilter[] };
+    return body.filter ?? [];
+  }
+
+  /** Gmail filters cannot be changed in place: an edit is a new filter, then deleting the old one. */
+  async createFilter(filter: Omit<GmailFilter, 'id'>, signal: AbortSignal): Promise<GmailFilter> {
+    const body = (await this.send('POST', 'users/me/settings/filters', filter, signal)) as Partial<GmailFilter>;
+    if (!body.id) throw new GmailApiError('Gmail did not create the filter.');
+    return body as GmailFilter;
+  }
+
+  /** Deletes a filter. Mail it already handled stays as it is. A filter that is already gone counts as deleted. */
+  async deleteFilter(id: string, signal: AbortSignal): Promise<void> {
+    try {
+      await this.send('DELETE', `users/me/settings/filters/${encodeURIComponent(id)}`, undefined, signal);
+    } catch (error) {
+      if (error instanceof GmailApiError && error.notFound) return;
+      throw error;
+    }
   }
 
   /** The mailbox's current history ID: where "what is new since" starts. */
@@ -153,7 +217,7 @@ export class GmailApi {
     return this.send('GET', path, undefined, signal);
   }
 
-  private async send(method: 'GET' | 'POST', path: string, json: unknown, signal: AbortSignal, retried = false): Promise<unknown> {
+  private async send(method: 'GET' | 'POST' | 'DELETE', path: string, json: unknown, signal: AbortSignal, retried = false): Promise<unknown> {
     let token: string;
     try {
       token = await this.deps.auth.token(retried);
@@ -181,9 +245,11 @@ export class GmailApi {
     const message = typeof body.error?.message === 'string' ? body.error.message : '';
     if (response.status === 401) throw new GmailApiError('Gmail no longer accepts this sign-in. Reconnect Gmail.', true);
     if (response.status === 403 && /insufficient|scope/i.test(message + String(typeof body.error?.status === 'string' ? body.error.status : ''))) {
+      // Not a sign-in problem: everything else still works; only filter management was not allowed.
+      if (path.startsWith('users/me/settings/filters')) throw new GmailApiError('Inbox Pilot is not allowed to manage Gmail filters. Turn on Gmail filters in Inbox Pilot settings (Connections).');
       throw new GmailApiError('Gmail access is read-only. Reconnect Gmail in Inbox Pilot settings and allow it to manage your email, to use drafts and organizing.', true);
     }
-    if (response.status === 404) throw new GmailApiError('That email no longer exists (it may have been deleted).', false, true);
+    if (response.status === 404) throw new GmailApiError(path.startsWith('users/me/settings/filters') ? 'That filter no longer exists.' : 'That email no longer exists (it may have been deleted).', false, true);
     if (response.status === 429) throw new GmailApiError('Gmail is rate limiting requests. Wait a minute and try again.');
     throw new GmailApiError(`Gmail returned an error (HTTP ${response.status}${message ? `: ${message}` : ''}).`);
   }

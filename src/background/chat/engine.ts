@@ -9,6 +9,8 @@ import { extractBody, header, messageDate, searchLine, threadText, toRef } from 
 import { buildRaw, replyFields } from '../gmail/mime';
 import { RULE_ACTIONS, RULE_LIMITS, ruleProblems, sanitizeRule, type Rule, type RuleAction, type RulesDoc } from '../../shared/rules';
 import { addDays, DATE_RE, describeWhen, wallMs, zonedToUtc } from '../../shared/when';
+import { FILTER_LIMITS, filterCapable, filterQuery, sameFilter, specForModel, specFromModel, type ChangeDetail, type FilterChange, type FilterSpec } from '../../shared/filters';
+import { FilterManager } from './filters';
 import { CALENDAR_TOOLS, systemPrompt, TOOLS } from './prompt';
 
 /** Model turns per question. Each turn may run several tools in parallel; real questions settle in two to four. */
@@ -20,6 +22,9 @@ const THREAD_ID_RE = /^[A-Za-z0-9]{6,40}$/;
 export const PROPOSAL_LIMIT = 100;
 const READ_ONLY = 'Gmail access is read-only right now. Tell the user to reconnect Gmail in Inbox Pilot settings and allow it to manage email, then ask again.';
 const NO_CALENDAR = 'Google Calendar is not connected. Tell the user to connect Calendar in Inbox Pilot settings (Connections), then ask again.';
+const NO_FILTERS = 'Inbox Pilot is not allowed to manage Gmail filters yet. Tell the user to allow it: Inbox Pilot settings, Connections, Gmail filters, Allow (the panel shows a button for it). Then ask again.';
+/** Filters whose recent matches list_filters counts (two cheap Gmail calls each). */
+const FILTER_ACTIVITY = 200;
 /** Days one check_calendar call may span, and events it returns. */
 const CALENDAR_DAYS = 62;
 const CALENDAR_EVENTS = 50;
@@ -35,6 +40,8 @@ export interface ChatEngineDeps {
   calendar: CalendarApi;
   /** Whether the Google sign-in includes Calendar access. */
   canCalendar: () => Promise<boolean>;
+  /** Whether the Google sign-in may read, create and delete Gmail filters. */
+  canFilters: () => Promise<boolean>;
   readPdf: PdfReader;
   /** The user's automation rules and webhook destinations (propose_rule may only use those destinations). */
   rules: () => Promise<RulesDoc>;
@@ -65,11 +72,11 @@ export class ChatEngine {
     const { model, effort } = pick(await this.deps.models(), prefs);
     const tz = validTimeZone(ask.timeZone);
     const context = ask.context && THREAD_ID_RE.test(ask.context.threadId) ? { threadId: ask.context.threadId, subject: String(ask.context.subject).slice(0, 300) } : null;
-    const [canModify, canCalendar, rules] = await Promise.all([this.deps.canModify(), this.deps.canCalendar(), this.deps.rules().catch(() => ({ rules: [], destinations: [] }))]);
+    const [canModify, canCalendar, canFilters, rules] = await Promise.all([this.deps.canModify(), this.deps.canCalendar(), this.deps.canFilters(), this.deps.rules().catch(() => ({ rules: [], destinations: [] }))]);
     const tools = canCalendar ? [...TOOLS, ...CALENDAR_TOOLS] : TOOLS;
     const destinations = rules.destinations.map((d) => d.name);
     const ruleNames = rules.rules.map((r) => r.name);
-    const developer: ConversationItem = { type: 'message', role: 'developer', content: [{ type: 'input_text', text: systemPrompt({ email, timeZone: tz, now: ask.now, openEmail: context, canModify, canCalendar, destinations, ruleNames }) }] };
+    const developer: ConversationItem = { type: 'message', role: 'developer', content: [{ type: 'input_text', text: systemPrompt({ email, timeZone: tz, now: ask.now, openEmail: context, canModify, canCalendar, canFilters, destinations, ruleNames }) }] };
     const question: ConversationItem = { type: 'message', role: 'user', content: [{ type: 'input_text', text: ask.question.slice(0, 4000) }] };
     const history = trimHistory(ask.history.filter(isItem), HISTORY_CHAR_BUDGET);
     const turn: ConversationItem[] = [question];
@@ -168,6 +175,8 @@ export class ChatEngine {
       if (call.name === 'create_draft') return await this.createDraft(call, seen, emit, signal, self);
       if (call.name === 'propose_actions') return await this.propose(call, emit, signal);
       if (call.name === 'propose_rule') return await this.proposeRule(call, emit);
+      if (call.name === 'list_filters') return await this.listFilters(call, emit, signal);
+      if (call.name === 'propose_filter_changes') return await this.proposeFilterChanges(call, emit, signal);
       if (call.name === 'list_rules') return await this.listRules();
       if (call.name === 'propose_rule_delete') return await this.proposeRuleDelete(call, emit);
       if (call.name === 'check_calendar') return await this.checkCalendar(call, timeZone, emit, signal, now);
@@ -329,6 +338,15 @@ export class ChatEngine {
     if (!rule) return JSON.stringify({ error: 'the rule is incomplete' });
     const problems = ruleProblems(rule, doc.destinations);
     if (problems.length) return JSON.stringify({ error: problems.join(' ') });
+    // What needs no AI belongs in a Gmail filter: Gmail runs it as mail arrives, even with every browser closed.
+    const changed = !before || JSON.stringify([before.trigger, before.query, before.test, before.actions]) !== JSON.stringify([rule.trigger, rule.query, rule.test, rule.actions]);
+    if (changed && filterCapable(rule)) {
+      if (await this.deps.canFilters()) {
+        return JSON.stringify({ error: 'This rule needs no AI (no question, only Gmail actions), so it must be a Gmail filter instead: propose it with propose_filter_changes. Gmail runs filters itself as mail arrives, even with Chrome closed. Rules are only for what needs a question answered, a notification, a webhook or a schedule.' });
+      }
+      emit({ type: 'needs', access: 'filters' });
+      return JSON.stringify({ error: `This rule needs no AI, so it should be a Gmail filter, which Gmail runs itself even with Chrome closed. ${NO_FILTERS}` });
+    }
     const summary = str('summary')?.slice(0, 300) ?? '';
     emit({ type: 'rule-proposal', id: crypto.randomUUID(), mode: before ? 'update' : 'create', rule, ...(before ? { before } : {}), summary, destinations: doc.destinations });
     return JSON.stringify({
@@ -337,6 +355,134 @@ export class ChatEngine {
       note: before
         ? 'The panel shows the change (before and after) with Save changes and Cancel. Nothing has changed yet.'
         : 'The panel shows the rule with Create rule and Cancel. It is not active yet; do not say it was created. Suggest the user tries "Test on recent mail" in Inbox Pilot settings, Rules, after creating it.',
+    });
+  }
+
+  /**
+   * The user's Gmail filters in words, each with the search that finds what it matches and, unless turned off, how
+   * much mail it matched in the last year and when it last did: what a review needs to spot dead, duplicate and
+   * overlapping filters.
+   */
+  private async listFilters(call: FunctionCall, emit: (message: ChatServerMessage) => void, signal: AbortSignal): Promise<string> {
+    if (!(await this.deps.canFilters())) {
+      emit({ type: 'needs', access: 'filters' });
+      return JSON.stringify({ error: NO_FILTERS });
+    }
+    emit({ type: 'step', kind: 'filters', label: 'Reading your Gmail filters' });
+    const { entries, labels } = await new FilterManager(this.deps.gmail).entries(signal);
+    const activity = call.args.activity !== false;
+    const stats = activity
+      ? await mapLimit(entries.slice(0, FILTER_ACTIVITY), 6, async (e) => {
+          try {
+            const found = await this.deps.gmail.listIds(`${filterQuery(e.spec.criteria)} newer_than:1y`, 100, signal);
+            const newest = found.ids[0] ? await this.deps.gmail.messageDate(found.ids[0].id, signal) : null;
+            return { count: found.ids.length, more: found.more, newest };
+          } catch (error) {
+            if (signal.aborted) throw error;
+            return null;
+          }
+        })
+      : [];
+    if (activity && entries.length) emit({ type: 'step', kind: 'filters', label: `Checked what ${Math.min(entries.length, FILTER_ACTIVITY)} filters matched this year` });
+    return JSON.stringify({
+      count: entries.length,
+      filters: entries.map((e, i) => {
+        const s = stats[i];
+        const duplicate = entries.find((o, j) => j < i && sameFilter(o.spec, e.spec));
+        return {
+          filter_id: e.id,
+          ...specForModel(e.spec),
+          search: filterQuery(e.spec.criteria),
+          ...(e.missingLabels.length ? { problem: 'adds a label that no longer exists (it was deleted), so that part does nothing' } : {}),
+          ...(duplicate ? { duplicate_of: duplicate.id } : {}),
+          ...(s ? { matched_last_year: `${s.count}${s.more ? '+' : ''}`, ...(s.newest ? { newest_match: new Date(s.newest).toISOString().slice(0, 10) } : {}) } : {}),
+        };
+      }),
+      user_labels: labels.filter((l) => l.type === 'user').map((l) => l.name).sort((a, b) => a.localeCompare(b)),
+      ...(entries.length > FILTER_ACTIVITY && activity ? { note: `matches were counted for the first ${FILTER_ACTIVITY} filters only` } : {}),
+    });
+  }
+
+  /**
+   * Proposes a set of filter changes for one confirmation: new filters, replacements (an edit, or several filters
+   * merged into one) and deletions. Every filter it removes is looked up, so the model cannot invent one, and the
+   * card shows how much mail each new filter matches. Nothing changes until the user confirms in the panel.
+   */
+  private async proposeFilterChanges(call: FunctionCall, emit: (message: ChatServerMessage) => void, signal: AbortSignal): Promise<string> {
+    if (!(await this.deps.canFilters())) {
+      emit({ type: 'needs', access: 'filters' });
+      return JSON.stringify({ error: NO_FILTERS });
+    }
+    const raw: unknown[] = Array.isArray(call.args.changes) ? call.args.changes : [];
+    if (!raw.length) return JSON.stringify({ error: 'changes are required' });
+    if (raw.length > FILTER_LIMITS.changes) return JSON.stringify({ error: `at most ${FILTER_LIMITS.changes} changes per proposal; propose the rest separately` });
+    const { entries, raw: current, labels } = await new FilterManager(this.deps.gmail).entries(signal);
+    const byId = new Map(entries.map((e) => [e.id, e]));
+    const canModify = await this.deps.canModify();
+    const labelNames = new Set(labels.map((l) => l.name.toLowerCase()));
+    const taken = new Set<string>();
+    const planned: { filter?: FilterSpec; removes: string[]; existing: boolean; reason: string }[] = [];
+    for (const [n, item] of raw.entries()) {
+      const c = (item ?? {}) as { filter?: unknown; replaces?: unknown; apply_to_existing?: unknown; reason?: unknown };
+      const where = `change ${n + 1}`;
+      const removes = [...new Set((Array.isArray(c.replaces) ? c.replaces : []).filter((id): id is string => typeof id === 'string'))];
+      for (const id of removes) {
+        if (!byId.has(id)) return JSON.stringify({ error: `${where}: ${id} is not a filter_id from list_filters` });
+        if (taken.has(id)) return JSON.stringify({ error: `${where}: filter ${id} is already removed by another change` });
+        taken.add(id);
+      }
+      let filter: FilterSpec | undefined;
+      if (c.filter !== undefined && c.filter !== null) {
+        const spec = specFromModel(c.filter);
+        if ('error' in spec) return JSON.stringify({ error: `${where}: ${spec.error}` });
+        // Inbox Pilot never sets up forwarding; a replacement may only keep an address a replaced filter forwards to.
+        if (spec.actions.forward && !removes.some((id) => byId.get(id)!.spec.actions.forward.toLowerCase() === spec.actions.forward.toLowerCase())) {
+          return JSON.stringify({ error: `${where}: Inbox Pilot cannot set up forwarding; forward may only keep the address of a filter this change replaces` });
+        }
+        filter = spec;
+      }
+      if (!filter && !removes.length) return JSON.stringify({ error: `${where}: give a filter to create, filter_ids to replace or delete, or both` });
+      const existing = c.apply_to_existing === true && !!filter;
+      if (existing && !canModify) return JSON.stringify({ error: `${where}: ${READ_ONLY}` });
+      planned.push({ ...(filter ? { filter } : {}), removes, existing, reason: typeof c.reason === 'string' ? c.reason.trim().slice(0, 300) : '' });
+    }
+    // No duplicates: of a filter that stays, or of another new one.
+    const staying = entries.filter((e) => !taken.has(e.id));
+    for (const [n, p] of planned.entries()) {
+      if (!p.filter) continue;
+      const same = staying.find((e) => sameFilter(e.spec, p.filter!));
+      if (same) return JSON.stringify({ error: `change ${n + 1}: an identical filter already exists (${same.id}) and is not being replaced` });
+      if (planned.some((o, m) => m < n && o.filter && sameFilter(o.filter, p.filter!))) return JSON.stringify({ error: `change ${n + 1} creates the same filter as an earlier change` });
+    }
+    if (planned.some((p) => p.filter)) emit({ type: 'step', kind: 'filters', label: 'Checking what the new filters match' });
+    const details = new Map<string, ChangeDetail>();
+    const changes: FilterChange[] = await mapLimit(planned, 4, async (p) => {
+      const id = crypto.randomUUID();
+      const change: FilterChange = { id, removes: p.removes.map((r) => byId.get(r)!), reason: p.reason };
+      let existing: string[] = [];
+      if (p.filter) {
+        const query = filterQuery(p.filter.criteria);
+        change.filter = p.filter;
+        const fresh = p.filter.actions.labels.filter((l) => !labelNames.has(l.toLowerCase()));
+        if (fresh.length) change.newLabels = fresh;
+        const recent = await this.deps.gmail.listIds(`${query} newer_than:1y`, 100, signal);
+        change.matches = { count: recent.ids.length, more: recent.more };
+        if (p.existing) {
+          const all = await this.deps.gmail.listIds(query, FILTER_LIMITS.existing, signal);
+          existing = all.ids.map((m) => m.id);
+          change.existing = { count: existing.length, more: all.more };
+        }
+      }
+      details.set(id, { removes: p.removes.map((r) => current.find((f) => f.id === r)!), existing });
+      return change;
+    });
+    const summary = typeof call.args.summary === 'string' ? call.args.summary.trim().slice(0, 300) : '';
+    emit({ type: 'filter-proposal', proposal: { id: crypto.randomUUID(), summary, changes }, details });
+    return JSON.stringify({
+      proposed: true,
+      changes: changes.map((c, i) => ({ change: i + 1, ...(c.matches ? { matches_last_year: `${c.matches.count}${c.matches.more ? '+' : ''}` } : {}), ...(c.existing ? { existing_emails: `${c.existing.count}${c.existing.more ? '+' : ''}` } : {}) })),
+      status: 'waiting for the user',
+      note: 'The panel lists each change with a tick box, Apply and Cancel. Nothing has changed yet; do not say it is done. If a new filter matched nothing in the last year, it may have a mistake in it: say so.',
     });
   }
 

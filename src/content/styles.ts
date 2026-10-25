@@ -266,6 +266,19 @@ textarea:focus-visible { outline: none; }
 .rule-label { color: var(--on-variant); }
 .rule-row .was { display: block; color: var(--on-variant); font-size: 12.5px; text-decoration: line-through; }
 
+/* Proposed filter changes: one block per change, the filters it replaces struck through. */
+.filter-changes { max-height: 380px; }
+.filter-changes li { align-items: flex-start; padding: 8px; }
+.filter-changes li + li { border-top: 1px solid var(--divider); border-radius: 0; }
+.filter-changes input { margin-top: 3px; }
+.filter-change { display: grid; gap: 3px; flex: 1; min-width: 0; font-size: 13.5px; line-height: 1.4; overflow-wrap: anywhere; }
+.filter-change .subject { color: var(--on-surface); font-weight: 600; }
+.filter-change .was { color: var(--on-variant); font-size: 12.5px; text-decoration: line-through; }
+.filter-change .small { font-size: 12.5px; }
+.filter-warn { color: var(--error); font-size: 12.5px; }
+.needs { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; padding: 10px 14px; border-radius: 8px; background: var(--surface-dim); border: 1px solid var(--divider); font-size: 13px; }
+.needs span { flex: 1; min-width: 200px; }
+
 /* Proposed calendar event: Calendar-style block with the details, linked to the email it came from. */
 .event-body { display: flex; gap: 12px; padding: 4px 16px 10px; }
 .event-icon { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--primary-container); color: var(--on-primary-container); }

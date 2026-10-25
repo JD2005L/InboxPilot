@@ -4,7 +4,7 @@
 
 <p align="center"><strong>Your ChatGPT, at the controls of your Gmail.</strong><br>
 Ask questions from Gmail's search bar. ChatGPT finds the emails, reads the attachments, answers with links to its
-sources, drafts replies, tidies your inbox and fills your calendar. On your own ChatGPT plan, with no server.</p>
+sources, drafts replies, tidies your inbox and your Gmail filters, and fills your calendar. On your own ChatGPT plan, with no server.</p>
 
 <p align="center">
 <a href="https://jd2005l.github.io/InboxPilot/">Website</a> ·
@@ -23,6 +23,8 @@ sources, drafts replies, tidies your inbox and fills your calendar. On your own 
 - *Draft a reply saying Thursday works* (saves a draft; Inbox Pilot cannot send)
 - *Archive the promotions older than two weeks* (shows you the list first, with Undo)
 - *Put my flights for the Toronto trip in my calendar* (right time zones; you click Add)
+- *Review my Gmail filters and clean them up* (merges, fixes and removes, as changes you tick and confirm, with Undo)
+- *File everything from Amazon and eBay under Shopping* (creates a Gmail filter, which Gmail runs itself)
 - *Whenever the school emails, send a summary to my phone* (creates a rule you confirm)
 
 Ordinary searches like `from:bob invoice` still search Gmail exactly as before. A chip at the end of the search bar
@@ -38,7 +40,8 @@ shows whether **Enter** will search or ask ChatGPT; click it to flip, or press *
 | **Draft** | Replies threaded into the right conversation, or new emails, saved as drafts and opened for you to review and send. |
 | **Organize** | Archive, mark read or unread, star, label, move to the inbox or Trash. Always a list you review and confirm, with Undo. Unsubscribe shows each sender's own unsubscribe link. |
 | **Calendar** (optional) | Events from bookings and appointments, with times as the email states them (a flight departs in one time zone and lands in another), the details you need on the day, and a link back to the email. You click **Add** on each. Also answers "am I free Thursday afternoon?". |
-| **Rules** (optional) | Automations you approve once: a Gmail filter, an optional yes/no question ChatGPT answers per email, and fixed actions (label, archive, star, mark read or important, Trash, a desktop notification, or a webhook to ntfy, Home Assistant, n8n, Discord or Slack). New mail is handled as it arrives, and mail that came in while Chrome was closed is caught up later. Daily limits, a dry run on recent mail, and an activity log with Undo. Create, change, pause or delete rules in settings or by asking in chat. |
+| **Gmail filters** (optional) | Sees your filters and creates, edits, merges or deletes them when you ask, always as a list of changes you tick and confirm, with Undo. "Review my filters" finds duplicates, filters that can be merged, overlaps, labels that no longer exist and filters that have not matched anything in a year. A new filter can also be applied to mail you already have. Anything that needs no AI (labelling by sender or subject, skipping the inbox, deleting) becomes a filter, which Gmail runs itself, even with every computer off. |
+| **Rules** (optional) | For what needs ChatGPT or reaches beyond Gmail: a Gmail search, an optional yes/no question ChatGPT answers per email, and fixed actions (label, archive, star, mark read or important, Trash, a desktop notification, or a webhook to ntfy, Home Assistant, n8n, Discord or Slack). New mail is handled as it arrives, and mail that came in while Chrome was closed is caught up later. Daily limits, a dry run on recent mail, and an activity log with Undo. Create, change, pause or delete rules in settings or by asking in chat. |
 | **Looks like Gmail** | The answer drops down under the search bar like Gmail's own suggestions, in Gmail's light or dark theme. Expand it for long conversations; **Esc** closes it. |
 
 It is not Gmail's built-in "Ask Gmail" (Google's paid Gemini feature): Inbox Pilot uses your ChatGPT account and models.
@@ -76,6 +79,8 @@ Google or OpenAI can show.
 4. **Ask.** Type a question into Gmail's search bar and press Enter.
 5. **Calendar (optional).** Enable the Google Calendar API in the same project, then click *Connect Calendar* under
    Connections.
+6. **Gmail filters (optional).** Click *Allow* next to Gmail filters under Connections and tick the box for Gmail
+   settings and filters. Nothing to enable: it is the same Gmail API.
 
 ## Privacy and safety
 
@@ -83,15 +88,15 @@ Google or OpenAI can show.
   No analytics, and nothing is sent to the author.
 - **Your Google app, your tokens.** Sign-in tokens stay in this browser's extension storage, out of reach of web
   pages and of the script that runs inside Gmail.
-- **You approve every change.** Organizing and calendar events are proposals you confirm, each with Undo. There is
-  no way to send email or delete anything permanently; Trash keeps mail for 30 days.
+- **You approve every change.** Organizing, filter changes and calendar events are proposals you confirm, each with
+  Undo. There is no way to send email, set up forwarding, or delete anything permanently; Trash keeps mail for 30 days.
 - **Email is data, not instructions.** ChatGPT is told never to follow instructions written inside an email, and a
   confirmed change can only touch exactly what its card showed. Email content is never rendered as HTML.
 - **Rules can't be hijacked.** ChatGPT only answers a rule's yes/no question; the actions, labels and webhook
   destinations are fixed by you, and a rule proposed in chat can only send to destinations you added yourself.
 - **Conversations are not kept.** They live in the Gmail tab you asked in and disappear when it closes.
 - **Every permission stays visible.** Settings, Privacy & permissions lists everything Inbox Pilot has been allowed
-  (drafts and organizing, Calendar, rule sync, notifications, each webhook site), and each optional one can be turned
+  (drafts and organizing, Calendar, Gmail filters, rule sync, notifications, each webhook site), and each optional one can be turned
   off there.
 
 The full policy is in [PRIVACY.md](PRIVACY.md) (also published at
@@ -109,8 +114,10 @@ Gmail tab (content script: search-bar chip + answer panel, in a closed shadow ro
 Service worker
    ├─ ChatGPT: device-code sign-in → chatgpt.com/backend-api/codex/responses (streamed, store: false)
    │     tools: search_emails, read_thread, read_attachment, open_email, show_in_gmail, create_draft,
-   │            propose_actions, and check_calendar / propose_event while Calendar is connected
-   ├─ Gmail API, with a token from the user's own Google OAuth client (gmail.readonly, plus gmail.modify if granted)
+   │            propose_actions, list_filters, propose_filter_changes, list_rules, propose_rule,
+   │            and check_calendar / propose_event while Calendar is connected
+   ├─ Gmail API, with a token from the user's own Google OAuth client (gmail.readonly, plus gmail.modify and
+   │     gmail.settings.basic for filters if granted)
    ├─ Calendar API, same token, if connected (calendar.events)
    └─ Offscreen document, only while reading a PDF: pdf.js text extraction
 ```
@@ -120,8 +127,13 @@ Service worker
 - **Google sign-in** uses `chrome.identity.launchWebAuthFlow` with the user's OAuth client and renews silently every
   hour with exactly the scopes that were granted.
 - **Changes are fenced in the background.** A Confirm can only touch the conversations its proposal showed
-  (`ProposalBook`), and Add creates exactly the event its card showed (`EventBook`), each once. Every target is
-  looked up first, so the model cannot invent one.
+  (`ProposalBook`), Add creates exactly the event its card showed (`EventBook`), and Apply makes only the filter
+  changes its card listed (`FilterBook`), each once. Every target is looked up first, so the model cannot invent one.
+- **Filters before rules.** A rule proposed in chat that needs no AI (no question, only Gmail actions, on new mail) is
+  refused with a pointer to `propose_filter_changes`. Gmail cannot edit a filter in place, so a change creates the
+  new filter first and only then deletes the ones it replaces: a failure part-way leaves a duplicate, never a gap.
+  Applying a filter to existing mail changes only the emails the card counted, and only those whose labels actually
+  change, so Undo reverses exactly that.
 
 ### Rules across several computers
 
@@ -162,11 +174,11 @@ never include one. The unpacked build's extension ID is pinned by `config/extens
 | `src/background/chatgpt/` | Device-code sign-in, token refresh (single-flight; refresh tokens rotate), streaming Responses client |
 | `src/background/gmail/` | Google sign-in, Gmail API, message and MIME parsing, attachment text, draft builder |
 | `src/background/calendar/` | Calendar API client, event validation (wall-clock times in IANA zones), the event fence |
-| `src/background/chat/` | System prompt, tool definitions, the tool loop, organize and undo, the proposal fence |
+| `src/background/chat/` | System prompt, tool definitions, the tool loop, organize and undo, filter changes and undo, the proposal fences |
 | `src/offscreen/` | pdf.js text extraction, loaded only on demand |
 | `src/content/` | Search-bar integration (Enter routing, chip), the answer panel, theme detection |
 | `src/options/` | Settings page and setup guide |
-| `src/shared/` | Messages, types, the DOM builder, the safe Markdown renderer |
+| `src/shared/` | Messages, types, rules and filters in words, the DOM builder, the safe Markdown renderer |
 | `scripts/` | Build, icon renderer, store packaging |
 | `site/` | The project website (GitHub Pages) |
 

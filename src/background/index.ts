@@ -16,6 +16,8 @@ import { GmailApi } from './gmail/api';
 import { GmailAuth } from './gmail/auth';
 import { readPdf } from './gmail/pdf';
 import { describeDone, inverse, Organizer, ProposalBook } from './chat/organize';
+import { applyChanges, FilterBook, FilterManager, undoChanges } from './chat/filters';
+import type { ChangeDetail } from '../shared/filters';
 
 /** storage.sync: assistant preferences, so they follow the user to their other browsers. */
 const PREFS_KEY = 'prefs';
@@ -57,6 +59,7 @@ const gmailAuth = new GmailAuth({
 const gmail = new GmailApi({ fetch: boundFetch, base: CONFIG.gmailBase, auth: gmailAuth });
 const calendar = new CalendarApi({ fetch: boundFetch, base: CONFIG.calendarBase, auth: gmailAuth });
 const organizer = new Organizer(gmail);
+const filterManager = new FilterManager(gmail);
 const engine = new ChatEngine({
   client,
   gmail,
@@ -65,6 +68,7 @@ const engine = new ChatEngine({
   canModify: () => gmailAuth.canModify(),
   calendar,
   canCalendar: () => gmailAuth.canCalendar(),
+  canFilters: () => gmailAuth.canFilters(),
   readPdf,
   gmailEmail,
   // The runner is created further down; this only runs once a question is asked.
@@ -272,7 +276,7 @@ async function handle(request: Request, sender: chrome.runtime.MessageSender): P
       await gmailAuth.setClientId(String(request.clientId ?? ''));
       return { ok: true, data: null };
     case 'gmail/connect':
-      await gmailAuth.connect({ modify: request.modify === true, calendar: request.calendar === true, sync: request.sync === true });
+      await gmailAuth.connect({ modify: request.modify === true, calendar: request.calendar === true, sync: request.sync === true, filters: request.filters === true });
       if (request.sync) void runner.tick();
       return { ok: true, data: null };
     case 'welcome/replay': {
@@ -310,6 +314,11 @@ async function handle(request: Request, sender: chrome.runtime.MessageSender): P
       return { ok: true, data: await runner.undo(String(request.entryId), new AbortController().signal) };
     case 'rules/run-now':
       await runner.tick();
+      return { ok: true, data: null };
+    case 'filters/list':
+      return { ok: true, data: { filters: (await filterManager.entries(new AbortController().signal)).entries } };
+    case 'filters/delete':
+      await gmail.deleteFilter(String(request.id ?? ''), new AbortController().signal);
       return { ok: true, data: null };
     case 'node/rename': {
       const me = await node();
@@ -351,12 +360,19 @@ chrome.runtime.onConnect.addListener((port) => {
   // What this panel was shown, so a Confirm can only ever change conversations the user reviewed.
   const proposals = new ProposalBook();
   const events = new EventBook();
+  const filterProposals = new FilterBook();
   // Rules this panel proposed, each creatable once, exactly as shown.
   const proposedRules = new Map<string, { mode: 'create' | 'update' | 'delete'; rule: Rule } | null>();
   const post = (message: ChatServerMessage) => {
     if (message.type === 'rule-proposal') proposedRules.set(message.id, { mode: message.mode, rule: message.rule });
     if (message.type === 'proposal') proposals.add(message.proposal);
     if (message.type === 'event-proposal') events.add(message.event);
+    if (message.type === 'filter-proposal') {
+      // The filters to delete and the emails to change stay here: the panel only ever names a proposal and its changes.
+      const { details, ...shown } = message;
+      filterProposals.add(message.proposal, details ?? new Map<string, ChangeDetail>());
+      message = shown;
+    }
     try {
       port.postMessage(message);
     } catch {
@@ -379,6 +395,10 @@ chrome.runtime.onConnect.addListener((port) => {
     }
     if (message?.type === 'event/add' || message?.type === 'event/undo') {
       void calendarEvent(message, events, post);
+      return;
+    }
+    if (message?.type === 'filters/apply' || message?.type === 'filters/undo') {
+      void filterChanges(message, filterProposals, post);
       return;
     }
     if (message?.type === 'rule/create') {
@@ -437,6 +457,29 @@ async function organize(message: Extract<ChatClientMessage, { type: 'apply' | 'u
     post({ type: 'applied', proposalId: message.proposalId, ...result, message: `${describeDone(action, result.done, entry.proposal.label)}${failed}`, undone: undoing });
   } catch (error) {
     post({ type: 'applied', proposalId: message.proposalId, done: 0, failed: entry.threadIds.length, message: error instanceof Error ? error.message : String(error), undone: undoing });
+  }
+}
+
+/** Applies the filter changes the user ticked and confirmed, or undoes them. */
+async function filterChanges(message: Extract<ChatClientMessage, { type: 'filters/apply' | 'filters/undo' }>, book: FilterBook, post: (m: ChatServerMessage) => void): Promise<void> {
+  const signal = new AbortController().signal;
+  const id = message.proposalId;
+  const undoing = message.type === 'filters/undo';
+  try {
+    if (undoing) {
+      const applied = book.undo(id);
+      if (!applied) return post({ type: 'filter-result', proposalId: id, ok: false, undone: true, message: 'Nothing to undo.' });
+      const result = await undoChanges(filterManager, applied, signal);
+      post({ type: 'filter-result', proposalId: id, ok: result.ok, undone: true, message: result.message });
+      return;
+    }
+    const changes = book.approve(id, Array.isArray(message.changeIds) ? message.changeIds : []);
+    if (!changes?.length) return post({ type: 'filter-result', proposalId: id, ok: false, undone: false, message: 'Nothing to change.' });
+    const result = await applyChanges(filterManager, changes, signal);
+    book.done(id, result.applied);
+    post({ type: 'filter-result', proposalId: id, ok: result.ok, undone: false, message: result.message });
+  } catch (error) {
+    post({ type: 'filter-result', proposalId: id, ok: false, undone: undoing, message: error instanceof Error ? error.message : String(error) });
   }
 }
 

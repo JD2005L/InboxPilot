@@ -1,3 +1,4 @@
+import { FILTER_CATEGORIES } from '../../shared/filters';
 import { ORGANIZE_ACTIONS } from '../../shared/messages';
 import type { ToolDefinition } from '../chatgpt/client';
 import { formatForModel } from '../gmail/message';
@@ -12,6 +13,8 @@ export interface PromptContext {
   canModify?: boolean;
   /** Google Calendar is connected: check_calendar and propose_event are offered. */
   canCalendar?: boolean;
+  /** Gmail filter management is allowed: list_filters and propose_filter_changes work. */
+  canFilters?: boolean;
   /** Names of the webhook destinations the user set up, and of their existing rules. */
   destinations?: string[];
   ruleNames?: string[];
@@ -32,8 +35,13 @@ export function systemPrompt(opts: PromptContext): string {
 - If a date, time or time zone is missing or ambiguous, ask rather than guess. Nothing is added until the user clicks Add in the panel, so say what you proposed, not that it is on the calendar.
 - Use check_calendar when the user asks what is on their calendar, whether they are free, or whether something in an email clashes with their plans. You cannot invite people, or change or delete events already on the calendar; say so if asked.`
     : `- Google Calendar is not connected. If the user asks about their calendar or to add an event, tell them to connect Calendar in Inbox Pilot settings (Connections); meanwhile you can still find the details in their email.`;
-  const automation = `- Automations: when the user wants something to happen on its own from now on ("whenever…", "every morning…", "always…", "let me know when…", "send it to my phone", "keep my inbox free of…"), call propose_rule. A rule is a Gmail filter (free, narrows what is looked at), an optional yes/no question you will answer for each email later (only when the filter alone cannot decide), and fixed actions. Prefer a precise filter and keep the question short and concrete. Scheduled rules need a filter that excludes what was already handled (e.g. in:inbox older_than:14d). Rules run about once a minute while Chrome is open on one of the user's computers. The user creates it by clicking Create rule; say what you proposed, not that it exists.
-- Webhook destinations the user has set up: ${opts.destinations?.length ? opts.destinations.map((d) => `"${d}"`).join(', ') : 'none yet (a rule can still star, label, archive or show a desktop notification; for a phone or another service, tell them to add a webhook destination in Inbox Pilot settings, Rules)'}. Only these can be used. Existing rules: ${opts.ruleNames?.length ? opts.ruleNames.map((r) => `"${r}"`).join(', ') : 'none'}. To explain, change, pause or delete a rule, call list_rules first, then propose_rule with its rule_id (pass only what changes; enabled false pauses it) or propose_rule_delete. Every change waits for the user's confirmation, like a new rule.`;
+  const automation = `- Automations: when the user wants something to happen on its own from now on ("whenever…", "every morning…", "always…", "let me know when…", "send it to my phone", "keep my inbox free of…", "file these under…"), use a Gmail filter whenever one can do it, and a rule only when it needs AI or something a filter cannot do:
+  - A Gmail filter (propose_filter_changes) when the emails can be picked by sender, recipient, subject, words, attachment or size, and what should happen is a label, a category, skip the inbox, mark read, star, always or never mark important, never send to Spam, or delete. Gmail runs filters itself as mail arrives, free, even with every computer off. Labelling by a pattern is a filter, never a rule.
+  - A rule (propose_rule) only for what needs AI or Inbox Pilot: deciding from what an email says or means (a yes/no question you answer per email, e.g. "is this a bill with an amount due?", "is this from a real person needing a reply?"), a desktop notification, a webhook (their phone, Home Assistant, Slack), or a schedule over mail already received (e.g. archive promotions older than two weeks). Rules run about once a minute while Chrome is open on one of the user's computers.
+  - When a request needs both, split it: a filter for the Gmail part, and a rule only for the rest ("label the school's emails and text me" is a filter that labels plus a rule that sends to the phone).
+- Rules: a Gmail search narrowing what is looked at, an optional yes/no question (only when the search alone cannot decide), and fixed actions. Prefer a precise search and keep the question short and concrete. Scheduled rules need a search that excludes what was already handled (e.g. in:inbox older_than:14d). The user creates it by clicking Create rule; say what you proposed, not that it exists.
+- Webhook destinations the user has set up: ${opts.destinations?.length ? opts.destinations.map((d) => `"${d}"`).join(', ') : 'none yet (a rule can still star, label, archive or show a desktop notification; for a phone or another service, tell them to add a webhook destination in Inbox Pilot settings, Rules)'}. Only these can be used. Existing rules: ${opts.ruleNames?.length ? opts.ruleNames.map((r) => `"${r}"`).join(', ') : 'none'}. To explain, change, pause or delete a rule, call list_rules first, then propose_rule with its rule_id (pass only what changes; enabled false pauses it) or propose_rule_delete. Every change waits for the user's confirmation, like a new rule.
+${filterGuide(opts)}`;
   return `You are Inbox Pilot, an assistant built into the user's Gmail and powered by their ChatGPT account. You find things in the user's mailbox${opts.email ? ` (${opts.email})` : ''}, answer questions about it, read attachments, draft replies, organize mail, and add events to their calendar on request, using your tools.
 
 Current date and time for the user: ${formatForModel(opts.now, opts.timeZone)} (${opts.timeZone}).
@@ -49,7 +57,7 @@ How to work:
 ${writes}
 ${automation}
 ${calendar}
-- You cannot send or forward email, and you cannot delete anything permanently. If asked to, say so and tell the user how to do it in Gmail.
+- You cannot send or forward email, set up forwarding, or delete anything permanently. If asked to, say so and tell the user how to do it in Gmail.
 
 ${capabilities(opts)}
 
@@ -71,6 +79,7 @@ function capabilities(opts: PromptContext): string {
   const organize = opts.canModify ? 'Organize mail' : off('Organize mail', 'the same Allow drafts & organizing button');
   const calendar = opts.canCalendar ? 'Calendar' : off('Calendar', 'Inbox Pilot settings, Connections, Connect Calendar');
   const rules = opts.ruleNames?.length ? `Rules (they have ${opts.ruleNames.length}: ${opts.ruleNames.map((r) => `"${r}"`).join(', ')})` : 'Rules';
+  const filters = opts.canFilters ? 'Gmail filters' : off('Gmail filters', 'Inbox Pilot settings, Connections, Gmail filters, Allow');
   return `When the user asks what you can do, how to use you, or for help (including "What can you do?" asked on their behalf right after setup): do not search; answer from this guide. Start with one welcoming sentence (setup worked, and you are their ChatGPT inside Gmail), then a short bold heading per area with one line of what it does and one example question in quotes, in this order:
 1. Find anything: plain-English questions become Gmail searches, with numbered links to the emails used. "When does my flight to Calgary leave?"
 2. Read attachments: PDFs, Word, Excel and PowerPoint files are read for the answer. "How much is the plumber's invoice and when is it due?"
@@ -79,17 +88,96 @@ function capabilities(opts: PromptContext): string {
 5. ${draft}: saved as drafts in the right conversation for them to review and send; you can never send. "Draft a reply saying Thursday works."
 6. ${organize}: archive, label, star, mark read, move to Trash, always as a list they confirm, with Undo. "Archive promotions older than two weeks."
 7. ${calendar}: events from bookings and appointments with the right time zones, added only when they click Add; also checks their schedule. "Put my Toronto flights in my calendar."
-8. ${rules}: automations they approve once that run on new mail while Chrome is open, such as notifications, labels or a message to their phone, managed in settings or by asking. "Whenever the school emails, star it and notify me."
+8. ${filters}: creates, merges and cleans up the filters Gmail runs itself on arriving mail (labels, skip the inbox, mark read, star, delete), always as changes they confirm, with Undo. "Review my filters and clean them up."
+9. ${rules}: for what needs ChatGPT's judgment or reaches beyond Gmail, such as a desktop notification or a message to their phone, approved once and run while Chrome is open. "Whenever an email needs a reply from me, notify me."
 Then, briefly: Gmail's search bar still searches normally; the chip at its right end shows whether Enter searches or asks, Shift+Enter always asks, Esc closes this panel, and the expand button gives more room. Mention that it runs on their own ChatGPT plan with no server in between, and that nothing changes in their mailbox without their confirmation. End by inviting them to try one of the examples. Keep it scannable: no tables, no more than about 250 words.`;
 }
 
+/** What the model knows about Gmail filters: how to use them, and how to review a whole set. */
+function filterGuide(opts: PromptContext): string {
+  const state = opts.canFilters
+    ? ''
+    : ' Filter management is not allowed yet: when a filter is the right tool, still say so, and tell the user to allow it in Inbox Pilot settings, Connections, Gmail filters (the panel shows a button). Do not make a rule instead.';
+  return `- Gmail filters:${state} list_filters shows every filter with its filter_id, conditions, actions, the search that finds what it matches, how many emails it matched in the last year and the newest match, plus the user's labels. Gmail cannot edit a filter in place, so an edit is a replacement: the new filter plus replaces: [its filter_id]; a merge is one new filter replacing several; a deletion is replaces without a filter. One propose_filter_changes call can hold many changes, each with a short reason; the user ticks which to apply, and nothing changes until they do. from and to take several addresses or domains joined with OR ("amazon.com OR ebay.com"); has_words takes any Gmail search syntax; one label per filter, created if it does not exist ("Parent/Child" nests it). apply_to_existing also applies the filter to mail already received, like Gmail's "Also apply filter to matching conversations": offer it when creating or relabelling, and use it when merging changes what existing mail would get. delete sends matching mail straight to Trash (Gmail keeps it 30 days): only when the user asked for that mail to be deleted.
+- Reviewing filters ("review", "clean up", "improve", "tidy my filters"): call list_filters and list_rules, then go through every filter and look for: exact duplicates (duplicate_of); filters with the same actions that can be merged into one by joining their senders or words with OR; overlaps and contradictions (one archives what another stars, two put the same mail under different labels); filters adding a deleted label (problem); filters that matched nothing in the last year (probably dead, but they may be for rare mail, so make each deletion its own change); conditions so broad they catch more than intended (check with search_emails when unsure); near-duplicate label names (merge onto the one with more mail); and rules with no question that only label, archive, star, mark read or important, or trash, which should become filters (propose the filter, then propose_rule_delete for the rule). A merge must keep every sender, word and action the old filters had. Then make one propose_filter_changes call with all of it, and answer with a short summary grouped by kind of change (merged, fixed, deleted, new), saying what each change is for. Leave alone what is fine, and say how many filters needed nothing.`;
+}
+
 const threadId = { type: 'string', description: 'thread_id from search_emails or read_thread.' };
+
+const FILTER_SPEC = {
+  type: 'object',
+  description: 'The filter: at least one condition and one action.',
+  properties: {
+    from: { type: 'string', description: 'Sender address, name or domain; several joined with OR.' },
+    to: { type: 'string', description: 'Recipient address or domain; several joined with OR.' },
+    subject: { type: 'string', description: 'Words in the subject.' },
+    has_words: { type: 'string', description: 'Gmail search syntax the email must match, e.g. "invoice OR receipt" or list:news.example.com.' },
+    doesnt_have: { type: 'string', description: 'Words the email must not have.' },
+    has_attachment: { type: 'boolean' },
+    size: { type: 'object', properties: { comparison: { type: 'string', enum: ['larger', 'smaller'] }, megabytes: { type: 'number' } }, required: ['comparison', 'megabytes'], additionalProperties: false },
+    labels: { type: 'array', items: { type: 'string' }, maxItems: 1, description: 'The label to apply (one), by name. Created if missing.' },
+    category: { type: 'string', enum: [...FILTER_CATEGORIES], description: 'Categorize as this inbox tab.' },
+    skip_inbox: { type: 'boolean', description: 'Skip the inbox (archive it).' },
+    mark_read: { type: 'boolean' },
+    star: { type: 'boolean' },
+    important: { type: 'string', enum: ['always', 'never'], description: 'Always or never mark it important.' },
+    never_spam: { type: 'boolean', description: 'Never send it to Spam.' },
+    delete: { type: 'boolean', description: 'Delete it: straight to Trash (kept 30 days). Only when the user asked.' },
+    forward: { type: 'string', description: 'Only to keep the forwarding address of a filter this change replaces; Inbox Pilot cannot set up new forwarding.' },
+  },
+  additionalProperties: false,
+};
+
+const FILTER_TOOLS: ToolDefinition[] = [
+  {
+    type: 'function',
+    name: 'list_filters',
+    description:
+      "List the user's Gmail filters: filter_id, conditions, actions, the Gmail search that finds what each matches, how many emails it matched in the last year (counted up to 100) and the newest match, a problem note for a filter adding a deleted label, duplicate_of for exact duplicates, and the user's label names.",
+    parameters: {
+      type: 'object',
+      properties: { activity: { type: 'boolean', description: 'Count each filter’s matches in the last year (default true). false is faster, for just looking one up.' } },
+      additionalProperties: false,
+    },
+    strict: false,
+  },
+  {
+    type: 'function',
+    name: 'propose_filter_changes',
+    description:
+      'Propose changes to the user’s Gmail filters, for one confirmation: new filters, replacements (an edit, or a merge of several filters into one) and deletions. The panel lists each change with a tick box and how much mail it matches; nothing changes until the user clicks Apply, and Undo puts everything back.',
+    parameters: {
+      type: 'object',
+      properties: {
+        summary: { type: 'string', description: 'One short line shown above the changes.' },
+        changes: {
+          type: 'array',
+          maxItems: 50,
+          items: {
+            type: 'object',
+            properties: {
+              filter: FILTER_SPEC,
+              replaces: { type: 'array', items: { type: 'string' }, description: 'filter_ids from list_filters that this change deletes: replaced by filter, or just deleted when there is no filter.' },
+              apply_to_existing: { type: 'boolean', description: 'Also apply the new filter to mail already received (up to the newest 1000 matching emails).' },
+              reason: { type: 'string', description: 'Why, in a few words, shown with the change.' },
+            },
+            required: ['reason'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['summary', 'changes'],
+      additionalProperties: false,
+    },
+    strict: false,
+  },
+];
 
 const PROPOSE_RULE: ToolDefinition = {
   type: 'function',
   name: 'propose_rule',
   description:
-    "Propose a new automation rule, or a change to an existing one (pass rule_id from list_rules, and only the fields that change). The panel shows it with Create rule (or Save changes) and Cancel; nothing is saved until the user clicks. Later, for each email the filter finds, you will only be asked the rule's question; the actions are fixed here.",
+    "Propose a new automation rule, or a change to an existing one (pass rule_id from list_rules, and only the fields that change). Only for what needs AI or a filter cannot do (a question about each email, a notification, a webhook, a schedule); anything else is a Gmail filter. The panel shows it with Create rule (or Save changes) and Cancel; nothing is saved until the user clicks. Later, for each email the filter finds, you will only be asked the rule's question; the actions are fixed here.",
   parameters: {
     type: 'object',
     properties: {
@@ -165,6 +253,7 @@ export const CALENDAR_TOOLS: ToolDefinition[] = [
 ];
 
 export const TOOLS: ToolDefinition[] = [
+  ...FILTER_TOOLS,
   PROPOSE_RULE,
   {
     type: 'function',

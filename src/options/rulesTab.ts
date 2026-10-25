@@ -1,5 +1,6 @@
 import { h, icon } from '../shared/dom';
-import type { Diagnostics, DryRunRow, Request, RulesView } from '../shared/messages';
+import type { Diagnostics, DryRunRow, FiltersView, Request, RulesView } from '../shared/messages';
+import { describeActions, describeCriteria, filterCapable, type FilterEntry } from '../shared/filters';
 import { describeAction, describeTrigger, destinationProblems, RULE_LIMITS, ruleProblems, WEBHOOK_FORMATS, type ActivityEntry, type Destination, type Rule, type RuleAction, type WebhookFormat } from '../shared/rules';
 import type { Problem } from '../shared/types';
 import { APP_NAME, GOOGLE_URLS } from './setup';
@@ -26,6 +27,9 @@ let loading = false;
 let editing: Rule | null = null;
 let dry: { rows: DryRunRow[] | null; error: string | null; busy: boolean } | null = null;
 let draft: Destination = blankDestination();
+/** The user's Gmail filters; null until loaded (or after a change). */
+let filters: { entries: FilterEntry[] | null; error: string | null } | null = null;
+let filtersLoading = false;
 
 const EVERY: { minutes: number; label: string }[] = [
   { minutes: 15, label: 'Every 15 minutes' },
@@ -81,6 +85,19 @@ function blankDestination(): Destination {
 /** Called when anything changed in the background: the next render fetches fresh rules and status. */
 export function invalidateRules(): void {
   if (!editing) view = null;
+  filters = null;
+}
+
+async function loadFilters(ctx: RulesContext): Promise<void> {
+  if (filtersLoading) return;
+  filtersLoading = true;
+  try {
+    filters = { entries: (await ctx.send<FiltersView>({ type: 'filters/list' })).filters, error: null };
+  } catch (error) {
+    filters = { entries: null, error: error instanceof Error ? error.message : String(error) };
+  }
+  filtersLoading = false;
+  ctx.render();
 }
 
 function pattern(url: string): string {
@@ -112,7 +129,7 @@ export function rulesTab(ctx: RulesContext): HTMLElement[] {
     void load(ctx);
     return [h('section', { className: 'card' }, h('h2', {}, 'Rules'), h('p', { className: 'muted' }, 'Loading…'))];
   }
-  return editing ? [editorCard(ctx, view, editing)] : [rulesCard(ctx, view), destinationsCard(ctx, view), syncCard(ctx, view), activityCard(ctx, view)];
+  return editing ? [editorCard(ctx, view, editing)] : [filtersCard(ctx), rulesCard(ctx, view), destinationsCard(ctx, view), syncCard(ctx, view), activityCard(ctx, view)];
 }
 
 async function saveDoc(ctx: RulesContext, doc: RulesView['doc'], success: string): Promise<boolean> {
@@ -127,6 +144,75 @@ async function saveDoc(ctx: RulesContext, doc: RulesView['doc'], success: string
   } finally {
     ctx.render();
   }
+}
+
+// ----- Gmail filters -----
+
+/** The filters Gmail runs itself: preferred for anything that needs no AI. Created and cleaned up from the chat. */
+function filtersCard(ctx: RulesContext): HTMLElement {
+  const gmail = ctx.d.gmail.kind === 'signed-in' ? ctx.d.gmail : null;
+  const card = h(
+    'section',
+    { className: 'card', 'aria-labelledby': 'filters-title' },
+    h('h2', { id: 'filters-title' }, 'Gmail filters'),
+    h(
+      'p',
+      { className: 'muted' },
+      'Gmail runs these itself as mail arrives, even with every computer off. Inbox Pilot makes a filter for anything that needs no AI (labelling by sender or subject, skipping the inbox, deleting) and a rule only when ChatGPT has to read the email or something has to happen outside Gmail. Ask in Gmail’s search bar to create, merge or clean them up, for example ',
+      ctx.ui('Review my filters and clean them up'),
+      '.',
+    ),
+  );
+  if (!gmail?.canFilters) {
+    if (gmail?.filtersProblem) card.append(...ctx.problemBlock(gmail.filtersProblem));
+    card.append(
+      h('p', {}, 'Inbox Pilot cannot see your filters yet. Allow it once: Google asks you to tick ', ctx.ui('See, edit, create, or change your email settings and filters in Gmail'), '. It never sets up forwarding, and changes a filter only after you confirm.'),
+      h('div', { className: 'row' }, ctx.button('Allow Gmail filters', () => void ctx.act({ type: 'gmail/connect', filters: true }, undefined, 'filters-allow').then(() => invalidateRules()), 'primary', 'filters-allow')),
+    );
+    return card;
+  }
+  if (!filters) {
+    void loadFilters(ctx);
+    card.append(h('p', { className: 'muted' }, 'Loading your filters…'));
+    return card;
+  }
+  if (filters.error) card.append(h('p', { className: 'notice' }, filters.error));
+  const entries = filters.entries ?? [];
+  if (filters.entries && !entries.length) card.append(h('p', { className: 'muted' }, 'You have no Gmail filters yet.'));
+  if (entries.length) {
+    card.append(
+      h(
+        'ul',
+        { className: 'rule-list' },
+        ...entries.map((f) =>
+          h(
+            'li',
+            { className: 'rule' },
+            h(
+              'div',
+              { className: 'rule-text' },
+              h('strong', {}, describeActions(f.spec.actions) || (f.missingLabels.length ? 'Adds a deleted label' : 'Does nothing')),
+              h('span', { className: 'muted' }, describeCriteria(f.spec.criteria)),
+              f.missingLabels.length ? h('span', { className: 'warn-text' }, 'Adds a label that was deleted, so that part does nothing.') : null,
+            ),
+            h(
+              'div',
+              { className: 'actions' },
+              ctx.button('Delete', () => {
+                if (!confirm(`Delete this Gmail filter?\n\n${describeCriteria(f.spec.criteria)}\n→ ${describeActions(f.spec.actions)}\n\nMail it already handled stays as it is.`)) return;
+                void ctx.act({ type: 'filters/delete', id: f.id }, 'Filter deleted.', `filter-del-${f.id}`).then(() => invalidateRules());
+              }, 'small danger', `filter-del-${f.id}`),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+  card.append(h('div', { className: 'row' }, ctx.link('Open Gmail’s filter settings', `https://mail.google.com/mail/?authuser=${encodeURIComponent(gmail.email)}#settings/filters`), ctx.button('Refresh', () => {
+    invalidateRules();
+    ctx.render();
+  }, 'small')));
+  return card;
 }
 
 // ----- Rules -----
@@ -267,6 +353,14 @@ function editorCard(ctx: RulesContext, v: NonNullable<typeof view>, rule: Rule):
   const limit = h('input', { type: 'text', inputMode: 'numeric', value: String(rule.dailyLimit), className: 'prose short', 'data-key': 'rule-limit' });
   limit.addEventListener('input', () => (rule.dailyLimit = Math.round(Number(limit.value)) || 0));
 
+  // A rule that needs no AI is better as a Gmail filter; said while the user edits it.
+  const hint = h('p', { className: 'notice' });
+  const updateHint = () => {
+    hint.hidden = !filterCapable(rule);
+    hint.replaceChildren('This rule needs no ChatGPT, so a Gmail filter would do it better: Gmail runs filters itself as mail arrives, even with Chrome closed. Ask Inbox Pilot in Gmail’s search bar to make it a filter instead.');
+  };
+  updateHint();
+
   const save = () => {
     const problems = ruleProblems(rule, v.doc.destinations);
     if (problems.length) {
@@ -305,6 +399,7 @@ function editorCard(ctx: RulesContext, v: NonNullable<typeof view>, rule: Rule):
     field('Gmail filter', 'Ordinary Gmail search syntax. It costs nothing and narrows what ChatGPT has to read.', query),
     field('Ask ChatGPT (optional)', 'A yes/no question about each email. Leave it empty to act on everything the filter finds. Uses your ChatGPT plan: about one request per ten emails.', test),
     h('div', { className: 'field' }, 'Then', checks),
+    hint,
     field('Daily limit', `Most emails this rule handles per day (1 to ${RULE_LIMITS.dailyLimit}). Protects your ChatGPT plan and your webhooks from a mistake.`, limit),
     h(
       'div',
@@ -320,6 +415,9 @@ function editorCard(ctx: RulesContext, v: NonNullable<typeof view>, rule: Rule):
     ),
   );
   if (dry) card.append(dryResults());
+  // Field and tick-box listeners update `rule` first; these run after them, as the events bubble up.
+  card.addEventListener('input', updateHint);
+  card.addEventListener('change', updateHint);
   return card;
 }
 

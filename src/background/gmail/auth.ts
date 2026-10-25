@@ -24,7 +24,13 @@ export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
  * where rules, the activity log and each browser's heartbeat live. No access to the user's own Drive files.
  */
 export const SYNC_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
-const KNOWN_SCOPES = [GMAIL_SCOPE, MODIFY_SCOPE, CALENDAR_SCOPE, SYNC_SCOPE];
+/**
+ * Optional, asked for only once the user allows filter management: read, create and delete Gmail filters (and, as
+ * Google bundles them, see basic settings such as vacation replies, which Inbox Pilot never reads or changes). Not
+ * gmail.settings.sharing, so it cannot set up forwarding or delegation.
+ */
+export const FILTERS_SCOPE = 'https://www.googleapis.com/auth/gmail.settings.basic';
+const KNOWN_SCOPES = [GMAIL_SCOPE, MODIFY_SCOPE, CALENDAR_SCOPE, SYNC_SCOPE, FILTERS_SCOPE];
 /** storage.sync: the user's OAuth client ID. A public identifier, so it may follow them to their other browsers. */
 export const CLIENT_ID_KEY = 'google.clientId';
 /** storage.local (trusted contexts only). */
@@ -44,6 +50,7 @@ interface StoredToken {
   canModify?: boolean;
   canCalendar?: boolean;
   canSync?: boolean;
+  canFilters?: boolean;
 }
 
 export class GmailAuthError extends Error {
@@ -97,6 +104,7 @@ export class GmailAuth {
   /** The last Calendar connect attempt's problem. Memory only: it is shown right after the attempt. */
   private calendarProblem: Problem | null = null;
   private syncProblem: Problem | null = null;
+  private filtersProblem: Problem | null = null;
   private renewing: Promise<StoredToken> | null = null;
 
   constructor(private readonly deps: GmailAuthDeps) {}
@@ -128,14 +136,18 @@ export class GmailAuth {
 
   async state(): Promise<GmailState> {
     if (!(await this.clientId())) return { kind: 'no-client' };
-    const calendarProblem = { ...(this.calendarProblem ? { calendarProblem: this.calendarProblem } : {}), ...(this.syncProblem ? { syncProblem: this.syncProblem } : {}) };
+    const calendarProblem = {
+      ...(this.calendarProblem ? { calendarProblem: this.calendarProblem } : {}),
+      ...(this.syncProblem ? { syncProblem: this.syncProblem } : {}),
+      ...(this.filtersProblem ? { filtersProblem: this.filtersProblem } : {}),
+    };
     const token = await this.stored();
-    if (token) return { kind: 'signed-in', email: token.email, canModify: !!token.canModify, canCalendar: !!token.canCalendar, canSync: !!token.canSync, ...calendarProblem };
+    if (token) return { kind: 'signed-in', email: token.email, canModify: !!token.canModify, canCalendar: !!token.canCalendar, canSync: !!token.canSync, canFilters: !!token.canFilters, ...calendarProblem };
     const account = await this.account();
     // Signed in before, the hourly token simply ran out: still "connected"; the next request renews it silently.
     if (account && !this.problem) {
       const granted = await this.grantedScopes();
-      return { kind: 'signed-in', email: account, canModify: granted.includes(MODIFY_SCOPE), canCalendar: granted.includes(CALENDAR_SCOPE), canSync: granted.includes(SYNC_SCOPE), ...calendarProblem };
+      return { kind: 'signed-in', email: account, canModify: granted.includes(MODIFY_SCOPE), canCalendar: granted.includes(CALENDAR_SCOPE), canSync: granted.includes(SYNC_SCOPE), canFilters: granted.includes(FILTERS_SCOPE), ...calendarProblem };
     }
     return this.problem ? { kind: 'signed-out', problem: this.problem } : { kind: 'signed-out' };
   }
@@ -143,13 +155,18 @@ export class GmailAuth {
   /**
    * Interactive sign-in, from the settings page or the panel's "Reconnect Gmail" button. With `calendar` or `sync`,
    * that access is asked for as well, and checked against its API straight away so a missing step shows here.
+   * `filters` needs no API of its own (it is the Gmail API), only the box ticked.
    */
-  async connect(opts: { modify?: boolean; calendar?: boolean; sync?: boolean } = {}): Promise<void> {
+  async connect(opts: { modify?: boolean; calendar?: boolean; sync?: boolean; filters?: boolean } = {}): Promise<void> {
     this.problem = null;
     if (opts.calendar) this.calendarProblem = null;
     if (opts.sync) this.syncProblem = null;
+    if (opts.filters) this.filtersProblem = null;
     try {
-      const token = await this.authorize(true, { modify: !!opts.modify, calendar: !!opts.calendar, sync: !!opts.sync });
+      const token = await this.authorize(true, { modify: !!opts.modify, calendar: !!opts.calendar, sync: !!opts.sync, filters: !!opts.filters });
+      if (opts.filters && !token.canFilters) {
+        this.filtersProblem = { message: 'Google connected, but the box for Gmail settings and filters was left unticked, so Inbox Pilot cannot manage filters.', fix: 'filters-scope' };
+      }
       if (opts.calendar) {
         this.calendarProblem = token.canCalendar
           ? await this.checkApi(token.accessToken, `${this.deps.calendarBase}/calendars/primary/events?maxResults=1`, 'Google Calendar', 'calendar-api-disabled')
@@ -172,13 +189,14 @@ export class GmailAuth {
    * grant is revoked and the rest asked for again (one Google window, nothing new to tick). The grant belongs to the
    * Google account, so the user's other browsers ask them to connect again once.
    */
-  async drop(access: 'modify' | 'calendar' | 'sync'): Promise<void> {
-    const gone = { modify: MODIFY_SCOPE, calendar: CALENDAR_SCOPE, sync: SYNC_SCOPE }[access];
+  async drop(access: 'modify' | 'calendar' | 'sync' | 'filters'): Promise<void> {
+    const gone = { modify: MODIFY_SCOPE, calendar: CALENDAR_SCOPE, sync: SYNC_SCOPE, filters: FILTERS_SCOPE }[access];
     const keep = (await this.grantedScopes()).filter((s) => s !== gone);
     if (!keep.includes(MODIFY_SCOPE) && !keep.includes(GMAIL_SCOPE)) keep.unshift(GMAIL_SCOPE);
     const token = await this.stored(true);
     if (access === 'calendar') this.calendarProblem = null;
     if (access === 'sync') this.syncProblem = null;
+    if (access === 'filters') this.filtersProblem = null;
     if (token) await this.revoke(token.accessToken);
     await this.deps.local.remove(TOKEN_KEY);
     await this.deps.local.set({ [SCOPES_KEY]: keep });
@@ -198,6 +216,7 @@ export class GmailAuth {
     this.problem = null;
     this.calendarProblem = null;
     this.syncProblem = null;
+    this.filtersProblem = null;
     this.deps.onChange();
     // Best effort: also end the grant on Google's side.
     if (token) await this.revoke(token.accessToken);
@@ -228,6 +247,12 @@ export class GmailAuth {
     return state.kind === 'signed-in' && state.canSync && !state.syncProblem;
   }
 
+  /** Whether the current sign-in may read, create and delete Gmail filters. */
+  async canFilters(): Promise<boolean> {
+    const state = await this.state();
+    return state.kind === 'signed-in' && state.canFilters;
+  }
+
   /** A working access token, renewed silently when the hourly one ran out. */
   async token(force = false): Promise<string> {
     const stored = force ? null : await this.stored();
@@ -247,7 +272,7 @@ export class GmailAuth {
     }
   }
 
-  private async authorize(interactive: boolean, want: { modify?: boolean; calendar?: boolean; sync?: boolean; only?: string[] } = {}): Promise<StoredToken> {
+  private async authorize(interactive: boolean, want: { modify?: boolean; calendar?: boolean; sync?: boolean; filters?: boolean; only?: string[] } = {}): Promise<StoredToken> {
     const clientId = await this.clientId();
     if (!clientId) throw new GmailAuthError('Add your Google client ID in Inbox Pilot settings first.', 'google-client');
     const state = crypto.randomUUID();
@@ -261,6 +286,7 @@ export class GmailAuth {
       ...(want.modify || !granted.length || granted.includes(MODIFY_SCOPE) ? [MODIFY_SCOPE] : []),
       ...(want.calendar || granted.includes(CALENDAR_SCOPE) ? [CALENDAR_SCOPE] : []),
       ...(want.sync || granted.includes(SYNC_SCOPE) ? [SYNC_SCOPE] : []),
+      ...(want.filters || granted.includes(FILTERS_SCOPE) ? [FILTERS_SCOPE] : []),
     ];
     const scopes = want.only ?? (interactive || !granted.length ? [GMAIL_SCOPE, ...optional] : granted);
     const params = new URLSearchParams({
@@ -303,7 +329,7 @@ export class GmailAuth {
       throw new GmailAuthError('Google signed you in, but the boxes that let the app read your email were left unticked. Connect again and tick them.', 'google-scope');
     }
     const email = await this.profileEmail(result.token);
-    const token: StoredToken = { accessToken: result.token, expiresAt: this.deps.now() + result.expiresIn * 1000, email, canModify, canCalendar: grantedNow.includes(CALENDAR_SCOPE), canSync: grantedNow.includes(SYNC_SCOPE) };
+    const token: StoredToken = { accessToken: result.token, expiresAt: this.deps.now() + result.expiresIn * 1000, email, canModify, canCalendar: grantedNow.includes(CALENDAR_SCOPE), canSync: grantedNow.includes(SYNC_SCOPE), canFilters: grantedNow.includes(FILTERS_SCOPE) };
     await this.deps.local.set({ [TOKEN_KEY]: token, [ACCOUNT_KEY]: email, [SCOPES_KEY]: grantedNow.filter((s) => KNOWN_SCOPES.includes(s)) });
     this.problem = null;
     return token;

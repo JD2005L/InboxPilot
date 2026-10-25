@@ -74,7 +74,51 @@
       },
       { text: "Here's the rule. Every hour it looks at new emails from **Maple Creek School**, and ChatGPT checks whether each one asks you to do something. Those get the **School** label, a star, and a ping on **My phone**. Press **Create rule** to turn it on; you can pause, change or delete it any time in settings." },
     ],
+    filters: [
+      { type: 'step', kind: 'filters', label: 'Reading your Gmail filters' },
+      { type: 'step', kind: 'filters', label: 'Checked what 14 filters matched this year' },
+      {
+        type: 'filter-proposal',
+        proposal: {
+          id: 'store-filters',
+          summary: '4 changes; the other 9 filters are fine as they are.',
+          changes: [
+            {
+              id: 'c1',
+              filter: filter({ from: 'trailhead.example OR freshbasket.example OR cedarbooks.example' }, { labels: ['Shopping'], skipInbox: true }),
+              removes: [old({ from: 'trailhead.example' }, { labels: ['Shopping'], skipInbox: true }), old({ from: 'freshbasket.example' }, { labels: ['Shopping'], skipInbox: true }), old({ from: 'cedarbooks.example' }, { labels: ['Shopping'], skipInbox: true })],
+              reason: 'Same label and actions; one filter is easier to keep up to date.',
+              matches: { count: 100, more: true },
+            },
+            {
+              id: 'c2',
+              filter: filter({ from: 'maplecreek.example' }, { labels: ['School'], star: true }),
+              removes: [old({ from: 'maplecreek.example' }, { labels: [], star: true })],
+              newLabels: [],
+              reason: 'It labelled “Kids-School”, a label that was deleted; now it files under School again.',
+              matches: { count: 41, more: false },
+              existing: { count: 41, more: false },
+            },
+            { id: 'c3', removes: [old({ from: 'oldjob.example' }, { labels: ['Work'] })], reason: 'Matched nothing in the last year.' },
+            { id: 'c4', removes: [old({ from: 'amazon.example' }, { labels: ['Orders'] })], reason: 'Exact duplicate of another filter.' },
+          ],
+        },
+      },
+      {
+        text: 'I went through your **14 filters**. Most are fine; four changes would tidy things up:\n\n- **Merged:** the three store filters do the same thing, so one filter now covers all three senders.\n- **Fixed:** the school filter pointed at a label you deleted; it files under **School** again, including the 41 emails already received.\n- **Deleted:** one filter for an old job that has not matched anything in a year, and one exact duplicate.\n\nUntick anything you want to keep as it is, then press **Apply**. Undo puts everything back.',
+      },
+    ],
   };
+
+  function filter(c, a) {
+    return {
+      criteria: { from: '', to: '', subject: '', hasWords: '', doesntHave: '', hasAttachment: false, excludeChats: false, size: null, ...c },
+      actions: { labels: [], skipInbox: false, markRead: false, star: false, important: null, neverSpam: false, trash: false, category: null, forward: '', ...a },
+    };
+  }
+  function old(c, a) {
+    return { id: `f-${c.from}`, spec: filter(c, a), missingLabels: [] };
+  }
 
   const QUESTIONS = {
     ask: 'When does my flight to Calgary leave?',
@@ -82,6 +126,7 @@
     organize: 'Archive the promotions older than two weeks',
     draft: 'Draft a reply saying Thursday at 2 works',
     rule: 'Every hour, check the school emails and ping my phone if they need something from me',
+    filters: 'Review my Gmail filters and clean them up',
   };
   window.__storeQuestion = QUESTIONS[scene];
 
@@ -100,7 +145,7 @@
           if (event.text) {
             text = event.text.replace(/^> ?/gm, '');
             send({ type: 'delta', text }, t);
-          } else if (event.proposal) {
+          } else if (event.proposal && !event.type) {
             send({ type: 'proposal', proposal: { id: 'store-proposal', ...event.proposal } }, t);
           } else {
             send(event, t);

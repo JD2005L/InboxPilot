@@ -3,6 +3,7 @@ import { renderMarkdown } from '../shared/markdown';
 import type { ChatFix, ChatServerMessage, EventProposal, OpenEmail, OptionsTab, PanelStatus, Proposal } from '../shared/messages';
 import type { ConversationItem, EmailRef } from '../shared/types';
 import { describeAction, describeTrigger, type Destination, type Rule } from '../shared/rules';
+import { changeTitle, describeActions, describeCriteria, type FilterChange, type FilterProposal } from '../shared/filters';
 import { describeWhen } from '../shared/when';
 import { PANEL_CSS } from './styles';
 
@@ -38,7 +39,7 @@ export interface PanelDeps {
 }
 
 interface Step {
-  kind: 'search' | 'read' | 'attachment' | 'draft' | 'calendar' | 'open' | 'show';
+  kind: 'search' | 'read' | 'attachment' | 'draft' | 'calendar' | 'filters' | 'open' | 'show';
   label: string;
 }
 
@@ -72,6 +73,15 @@ interface RuleState {
   result: string | null;
 }
 
+/** Proposed filter changes and where the user is with them. */
+interface FilterState {
+  proposal: FilterProposal;
+  /** Changes still ticked. */
+  selected: Set<string>;
+  phase: 'pending' | 'applying' | 'applied' | 'cancelled' | 'undoing' | 'undone';
+  result: string | null;
+}
+
 interface Turn {
   question: string;
   steps: Step[];
@@ -81,6 +91,9 @@ interface Turn {
   proposals: ProposalState[];
   events: EventState[];
   rules: RuleState[];
+  filters: FilterState[];
+  /** An access the answer needed and the user has not allowed yet. */
+  needs: 'filters' | null;
   error: { message: string; fix?: ChatFix } | null;
   done: boolean;
   el: HTMLElement;
@@ -340,7 +353,7 @@ export class ChatPanel {
     if (!question || this.active || !this.ready()) return;
     this.textarea.value = '';
     this.autosize();
-    const turn: Turn = { question, steps: [], thinking: 'Thinking', text: '', emails: new Map(), proposals: [], events: [], rules: [], error: null, done: false, el: h('article', { className: 'turn' }) };
+    const turn: Turn = { question, steps: [], thinking: 'Thinking', text: '', emails: new Map(), proposals: [], events: [], rules: [], filters: [], needs: null, error: null, done: false, el: h('article', { className: 'turn' }) };
     this.turns.push(turn);
     this.active = turn;
     this.renderTurn(turn);
@@ -403,6 +416,10 @@ export class ChatPanel {
       this.ruleResult(message);
       return;
     }
+    if (message.type === 'filter-result') {
+      this.filterResult(message);
+      return;
+    }
     const turn = this.active;
     if (!turn || message.type === 'ping') return;
     switch (message.type) {
@@ -430,6 +447,12 @@ export class ChatPanel {
         break;
       case 'rule-proposal':
         turn.rules.push({ id: message.id, mode: message.mode, rule: message.rule, ...(message.before ? { before: message.before } : {}), summary: message.summary, destinations: message.destinations, phase: 'pending', result: null });
+        break;
+      case 'filter-proposal':
+        turn.filters.push({ proposal: message.proposal, selected: new Set(message.proposal.changes.map((c) => c.id)), phase: 'pending', result: null });
+        break;
+      case 'needs':
+        turn.needs = message.access;
         break;
       case 'delta':
         turn.thinking = null;
@@ -508,6 +531,8 @@ export class ChatPanel {
     if (turn.done) for (const state of turn.proposals) children.push(this.proposalCard(turn, state));
     if (turn.done) for (const state of turn.events) children.push(this.eventCard(turn, state));
     if (turn.done) for (const state of turn.rules) children.push(this.ruleCard(turn, state));
+    if (turn.done) for (const state of turn.filters) children.push(this.filterCard(turn, state));
+    if (turn.done && turn.needs && !turn.filters.length) children.push(this.needsBox());
     if (turn.error) children.push(this.errorBox(turn.error));
     turn.el.replaceChildren(...children.filter((c): c is Node => !!c));
   }
@@ -788,6 +813,98 @@ export class ChatPanel {
     }
   }
 
+  /**
+   * Proposed filter changes: each with a tick box, what the new filter matches and does, how much mail it caught in
+   * the last year, and the filters it replaces struck through. Apply / Cancel; once applied, the result and Undo.
+   */
+  private filterCard(turn: Turn, state: FilterState): HTMLElement {
+    const { proposal } = state;
+    const n = proposal.changes.length;
+    const title = state.phase === 'applied' ? 'Gmail filters changed' : state.phase === 'undone' ? 'Gmail filters put back' : n === 1 ? `${changeTitle(proposal.changes[0]!)}?` : `Make ${n} changes to your Gmail filters?`;
+    const card = h('section', { className: `proposal filter-card is-${state.phase}`, 'aria-label': title });
+    card.append(h('div', { className: 'proposal-head' }, h('strong', {}, title), proposal.summary ? h('span', { className: 'muted' }, proposal.summary) : null));
+    const editable = state.phase === 'pending';
+    const list = h('ul', { className: 'proposal-items filter-changes' });
+    for (const change of proposal.changes) {
+      const row = h('li', {});
+      if (editable && n > 1) {
+        const box = h('input', { type: 'checkbox', checked: state.selected.has(change.id), 'aria-label': `Include: ${changeTitle(change)}` });
+        box.addEventListener('change', () => {
+          if (box.checked) state.selected.add(change.id);
+          else state.selected.delete(change.id);
+          this.renderTurn(turn);
+        });
+        row.append(box);
+      }
+      row.append(filterChangeBody(change, n > 1));
+      list.append(row);
+    }
+    card.append(list);
+    const actions = h('div', { className: 'proposal-actions' });
+    if (state.phase === 'pending') {
+      const count = state.selected.size;
+      const apply = h('button', { type: 'button', className: 'button', disabled: !count }, n === 1 ? 'Apply' : `Apply ${count} change${count === 1 ? '' : 's'}`);
+      apply.addEventListener('click', () => {
+        let port: chrome.runtime.Port;
+        try {
+          port = this.ensurePort();
+        } catch {
+          state.phase = 'cancelled';
+          state.result = 'Inbox Pilot was updated or reloaded. Reload this Gmail tab and ask again.';
+          this.renderTurn(turn);
+          return;
+        }
+        state.phase = 'applying';
+        this.renderTurn(turn);
+        port.postMessage({ type: 'filters/apply', proposalId: proposal.id, changeIds: [...state.selected] });
+      });
+      const cancel = h('button', { type: 'button', className: 'text-button' }, 'Cancel');
+      cancel.addEventListener('click', () => {
+        state.phase = 'cancelled';
+        state.result = 'Cancelled. Your filters were not changed.';
+        this.renderTurn(turn);
+      });
+      actions.append(apply, cancel);
+    } else if (state.phase === 'applying' || state.phase === 'undoing') {
+      actions.append(h('span', { className: 'spinner', 'aria-hidden': 'true' }), h('span', { className: 'muted' }, state.phase === 'applying' ? 'Changing your filters…' : 'Putting them back…'));
+    } else {
+      actions.append(h('span', { className: 'result' }, state.result ?? ''));
+      if (state.phase === 'applied') {
+        const undo = h('button', { type: 'button', className: 'text-button' }, 'Undo');
+        undo.addEventListener('click', () => {
+          state.phase = 'undoing';
+          this.renderTurn(turn);
+          this.port?.postMessage({ type: 'filters/undo', proposalId: proposal.id });
+        });
+        const manage = h('button', { type: 'button', className: 'text-button' }, 'See all filters', icon('external'));
+        manage.addEventListener('click', () => this.deps.openSettings('rules'));
+        actions.append(undo, manage);
+      }
+    }
+    card.append(actions);
+    return card;
+  }
+
+  private filterResult(message: Extract<ChatServerMessage, { type: 'filter-result' }>): void {
+    for (const turn of this.turns) {
+      const state = turn.filters.find((f) => f.proposal.id === message.proposalId);
+      if (!state) continue;
+      if (message.undone) state.phase = message.ok ? 'undone' : 'applied';
+      else state.phase = message.ok ? 'applied' : 'cancelled';
+      state.result = message.message;
+      this.history.push({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: `(Gmail filters: ${message.undone ? 'the user clicked Undo. ' : 'the user applied the proposal. '}${message.message})` }] });
+      this.renderTurn(turn);
+      return;
+    }
+  }
+
+  /** The answer needed filter management, which is off: the way to allow it. */
+  private needsBox(): HTMLElement {
+    const button = h('button', { type: 'button', className: 'button' }, 'Allow Gmail filters', icon('external'));
+    button.addEventListener('click', () => this.deps.openSettings('rules'));
+    return h('div', { className: 'needs' }, h('span', {}, 'Inbox Pilot needs your permission to see and change your Gmail filters.'), button);
+  }
+
   private errorBox(error: { message: string; fix?: ChatFix }): HTMLElement {
     const box = h('div', { className: 'error', role: 'alert' }, error.message);
     if (error.fix) {
@@ -879,6 +996,7 @@ function trailSummary(steps: Step[]): string {
   const attachments = count('attachment');
   const drafts = count('draft');
   const calendars = count('calendar');
+  const filters = count('filters');
   const opened = count('open') + count('show');
   return [
     searches ? `Searched ${searches} time${searches === 1 ? '' : 's'}` : '',
@@ -886,6 +1004,7 @@ function trailSummary(steps: Step[]): string {
     attachments ? `read ${attachments} attachment${attachments === 1 ? '' : 's'}` : '',
     drafts ? `saved ${drafts === 1 ? 'a draft' : `${drafts} drafts`}` : '',
     calendars ? 'checked your calendar' : '',
+    filters ? 'checked your filters' : '',
     opened ? 'opened in Gmail' : '',
   ]
     .filter(Boolean)
@@ -907,6 +1026,8 @@ function stepWords(step: Step, now: boolean): (Node | string)[] {
       return [now ? 'Writing draft “' : 'Saved draft “', step.label, '”'];
     case 'calendar':
       return [now ? 'Checking your calendar for ' : 'Checked your calendar for ', step.label];
+    case 'filters':
+      return [now ? `${step.label}…` : step.label];
     case 'open':
       return ['Opened “', step.label, '” in Gmail'];
     case 'show':
@@ -955,6 +1076,36 @@ function confirmLabel(p: Proposal): string {
     unsubscribe: '',
   };
   return map[p.action];
+}
+
+/** One change of a filter proposal: what the new filter matches and does, and what it replaces. */
+function filterChangeBody(change: FilterChange, titled: boolean): HTMLElement {
+  const body = h('div', { className: 'filter-change' });
+  if (titled) body.append(h('span', { className: 'subject' }, changeTitle(change)));
+  const f = change.filter;
+  if (f) {
+    const fresh = change.newLabels?.length ? ` (new label${change.newLabels.length === 1 ? '' : 's'}: ${change.newLabels.join(', ')})` : '';
+    body.append(
+      h('div', { className: 'rule-row' }, h('span', { className: 'rule-label' }, 'Matches'), h('span', {}, describeCriteria(f.criteria))),
+      h('div', { className: 'rule-row' }, h('span', { className: 'rule-label' }, 'Does'), h('span', {}, describeActions(f.actions), fresh)),
+    );
+    const counted = (c: { count: number; more: boolean }) => `${c.count}${c.more ? '+' : ''} email${c.count === 1 && !c.more ? '' : 's'}`;
+    const facts = [
+      change.matches ? (change.matches.count ? `Matched ${counted(change.matches)} in the last year` : 'Matched no email in the last year') : '',
+      change.existing ? (change.existing.count ? `also applied now to ${counted(change.existing)} already received` : 'no email already received matches') : 'new mail only',
+    ].filter(Boolean);
+    body.append(h('span', { className: 'muted small' }, facts.join(' · ').replace(/^./, (c) => c.toUpperCase())));
+    if (f.actions.trash) {
+      const now = change.existing?.count ? ` ${counted(change.existing)} already received go to Trash too.` : '';
+      body.append(h('span', { className: 'filter-warn' }, `Deletes matching mail as it arrives: it skips your inbox and goes straight to Trash, which keeps it 30 days.${now}`));
+    }
+  }
+  for (const old of change.removes) {
+    const does = [describeActions(old.spec.actions), old.missingLabels.length ? 'a deleted label' : ''].filter(Boolean).join(', ');
+    body.append(h('span', { className: 'was' }, `${describeCriteria(old.spec.criteria)} → ${does || 'nothing'}`));
+  }
+  if (change.reason) body.append(h('span', { className: 'muted small' }, change.reason));
+  return body;
 }
 
 /** "Jane Doe <jane@x.com>" -> "Jane Doe"; a bare address stays as it is. */
